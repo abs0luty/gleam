@@ -11,12 +11,11 @@ use crate::{
     io::Utf8Writer,
     parse::extra::{Comment, ModuleExtra},
     pretty::*,
-    type_::{self, Type},
+    type_::{self, TypeId},
     Error, Result,
 };
 use ecow::EcoString;
 use itertools::Itertools;
-use std::sync::Arc;
 use vec1::Vec1;
 
 use crate::type_::Deprecation;
@@ -1175,7 +1174,7 @@ impl<'comments> Formatter<'comments> {
         public: bool,
         name: &'a str,
         args: &'a [TypedArg],
-        return_type: Arc<Type>,
+        return_type: TypeId,
     ) -> Document<'a> {
         let mut printer = type_::pretty::Printer::new();
 

@@ -1,25 +1,25 @@
 use std::sync::OnceLock;
 
 use super::*;
-use crate::type_::{bool, HasType, Type};
+use crate::type_::{bool, HasType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypedExpr {
     Int {
         location: SrcSpan,
-        typ: Arc<Type>,
+        typ: TypeId,
         value: EcoString,
     },
 
     Float {
         location: SrcSpan,
-        typ: Arc<Type>,
+        typ: TypeId,
         value: EcoString,
     },
 
     String {
         location: SrcSpan,
-        typ: Arc<Type>,
+        typ: TypeId,
         value: EcoString,
     },
 
@@ -47,30 +47,30 @@ pub enum TypedExpr {
 
     Fn {
         location: SrcSpan,
-        typ: Arc<Type>,
+        typ: TypeId,
         is_capture: bool,
-        args: Vec<Arg<Arc<Type>>>,
-        body: Vec1<Statement<Arc<Type>, Self>>,
+        args: Vec<Arg<TypeId>>,
+        body: Vec1<Statement<TypeId, Self>>,
         return_annotation: Option<TypeAst>,
     },
 
     List {
         location: SrcSpan,
-        typ: Arc<Type>,
+        typ: TypeId,
         elements: Vec<Self>,
         tail: Option<Box<Self>>,
     },
 
     Call {
         location: SrcSpan,
-        typ: Arc<Type>,
+        typ: TypeId,
         fun: Box<Self>,
         args: Vec<CallArg<Self>>,
     },
 
     BinOp {
         location: SrcSpan,
-        typ: Arc<Type>,
+        typ: TypeId,
         name: BinOp,
         left: Box<Self>,
         right: Box<Self>,
@@ -78,14 +78,14 @@ pub enum TypedExpr {
 
     Case {
         location: SrcSpan,
-        typ: Arc<Type>,
+        typ: TypeId,
         subjects: Vec<Self>,
-        clauses: Vec<Clause<Self, Arc<Type>, EcoString>>,
+        clauses: Vec<Clause<Self, TypeId, EcoString>>,
     },
 
     RecordAccess {
         location: SrcSpan,
-        typ: Arc<Type>,
+        typ: TypeId,
         label: EcoString,
         index: u64,
         record: Box<Self>,
@@ -93,7 +93,7 @@ pub enum TypedExpr {
 
     ModuleSelect {
         location: SrcSpan,
-        typ: Arc<Type>,
+        typ: TypeId,
         label: EcoString,
         module_name: EcoString,
         module_alias: EcoString,
@@ -102,13 +102,13 @@ pub enum TypedExpr {
 
     Tuple {
         location: SrcSpan,
-        typ: Arc<Type>,
+        typ: TypeId,
         elems: Vec<Self>,
     },
 
     TupleIndex {
         location: SrcSpan,
-        typ: Arc<Type>,
+        typ: TypeId,
         index: u64,
         tuple: Box<Self>,
     },
@@ -116,24 +116,24 @@ pub enum TypedExpr {
     Todo {
         location: SrcSpan,
         message: Option<EcoString>,
-        type_: Arc<Type>,
+        type_: TypeId,
     },
 
     Panic {
         location: SrcSpan,
         message: Option<EcoString>,
-        type_: Arc<Type>,
+        type_: TypeId,
     },
 
     BitArray {
         location: SrcSpan,
-        typ: Arc<Type>,
+        typ: TypeId,
         segments: Vec<TypedExprBitArraySegment>,
     },
 
     RecordUpdate {
         location: SrcSpan,
-        typ: Arc<Type>,
+        typ: TypeId,
         spread: Box<Self>,
         args: Vec<TypedRecordUpdateArg>,
     },
@@ -349,7 +349,7 @@ impl TypedExpr {
         }
     }
 
-    pub fn type_(&self) -> Arc<Type> {
+    pub fn type_(&self) -> TypeId {
         match self {
             Self::NegateBool { .. } => bool(),
             Self::NegateInt { value, .. } => value.type_(),
@@ -452,7 +452,7 @@ impl HasLocation for TypedExpr {
 }
 
 impl HasType for TypedExpr {
-    fn type_(&self) -> Arc<Type> {
+    fn type_(&self) -> TypeId {
         self.type_()
     }
 }

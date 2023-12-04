@@ -1,11 +1,10 @@
 use crate::{
     ast::{AssignName, TypedPattern},
-    type_::Type,
+    type_::TypeId,
 };
 use ecow::EcoString;
 use id_arena::{Arena, Id};
 use itertools::Itertools;
-use std::sync::Arc;
 
 pub type PatternId = Id<Pattern>;
 
@@ -62,9 +61,9 @@ pub enum Pattern {
 pub enum Constructor {
     Int(EcoString),
     Float(EcoString),
-    Tuple(Vec<Arc<Type>>),
+    Tuple(Vec<TypeId>),
     String(EcoString),
-    Variant { type_: Arc<Type>, index: u16 },
+    Variant { type_: TypeId, index: u16 },
     // TODO: Generate a decision tree for this
     BitArray,
     // TODO: Generate a decision tree for this

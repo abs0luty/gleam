@@ -9,12 +9,12 @@ use crate::{
     },
     build::Origin,
     type_::{
-        self, Deprecation, ModuleInterface, Type, TypeConstructor, TypeValueConstructor,
-        ValueConstructor, ValueConstructorVariant,
+        self, Deprecation, ModuleInterface, TypeConstructor, TypeValueConstructor,
+        ValueConstructor, ValueConstructorVariant, TypeId,
     },
     uid::UniqueIdGenerator,
 };
-use std::{collections::HashMap, io::BufReader, sync::Arc};
+use std::{collections::HashMap, io::BufReader};
 
 use pretty_assertions::assert_eq;
 
@@ -219,7 +219,7 @@ fn module_with_generic_type() {
     let t7 = type_::generic_var(7);
     let t8 = type_::generic_var(8);
 
-    fn make(t1: Arc<Type>, t2: Arc<Type>) -> ModuleInterface {
+    fn make(t1: TypeId, t2: TypeId) -> ModuleInterface {
         ModuleInterface {
             type_only_unqualified_imports: Vec::new(),
             package: "some_package".into(),
@@ -252,7 +252,7 @@ fn module_with_type_links() {
     let linked_type = type_::link(type_::int());
     let type_ = type_::int();
 
-    fn make(type_: Arc<Type>) -> ModuleInterface {
+    fn make(type_: TypeId) -> ModuleInterface {
         ModuleInterface {
             type_only_unqualified_imports: Vec::new(),
             package: "some_package".into(),

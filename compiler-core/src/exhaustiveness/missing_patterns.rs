@@ -1,15 +1,15 @@
 use super::{Constructor, Decision, Match, Variable};
-use crate::type_::environment::Environment;
+use crate::type_::{environment::Environment, TypeArena};
 use ecow::EcoString;
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
 
 /// Returns a list of patterns not covered by the match expression.
-pub fn missing_patterns(matches: &Match, environment: &Environment<'_>) -> Vec<EcoString> {
+pub fn missing_patterns(matches: &Match, environment: &Environment<'_>, type_arena: &TypeArena) -> Vec<EcoString> {
     let mut names = HashSet::new();
     let mut steps = Vec::new();
 
-    add_missing_patterns(&matches.tree, &mut steps, &mut names, environment);
+    add_missing_patterns(&matches.tree, &mut steps, &mut names, environment, type_arena);
 
     let mut missing: Vec<EcoString> = names.into_iter().collect();
 
@@ -124,6 +124,7 @@ fn add_missing_patterns(
     terms: &mut Vec<Term>,
     missing: &mut HashSet<EcoString>,
     environment: &Environment<'_>,
+    type_arena: &TypeArena,
 ) {
     match node {
         Decision::Success(_) => {}
@@ -157,7 +158,7 @@ fn add_missing_patterns(
         }
 
         Decision::Guard(_, _, fallback) => {
-            add_missing_patterns(fallback, terms, missing, environment);
+            add_missing_patterns(fallback, terms, missing, environment, type_arena);
         }
 
         Decision::Switch(variable, cases, fallback) => {
@@ -183,8 +184,9 @@ fn add_missing_patterns(
                     }
 
                     Constructor::Variant { type_, index } => {
-                        let (module, name) =
-                            type_.named_type_name().expect("Should be a named type");
+                        let (module, name) = type_
+                            .named_type_name(type_arena)
+                            .expect("Should be a named type");
                         let name = environment
                             .get_constructors_for_type(&module, &name)
                             .expect("Custom type constructor must have custom type kind")
@@ -200,12 +202,12 @@ fn add_missing_patterns(
                     }
                 }
 
-                add_missing_patterns(&case.body, terms, missing, environment);
+                add_missing_patterns(&case.body, terms, missing, environment, type_arena);
                 _ = terms.pop();
             }
 
             if let Some(node) = fallback {
-                add_missing_patterns(node, terms, missing, environment);
+                add_missing_patterns(node, terms, missing, environment, type_arena);
             }
         }
 
@@ -217,7 +219,7 @@ fn add_missing_patterns(
             terms.push(Term::EmptyList {
                 variable: variable.clone(),
             });
-            add_missing_patterns(empty, terms, missing, environment);
+            add_missing_patterns(empty, terms, missing, environment, type_arena);
             _ = terms.pop();
 
             terms.push(Term::List {
@@ -225,7 +227,7 @@ fn add_missing_patterns(
                 first: non_empty.first.clone(),
                 rest: non_empty.rest.clone(),
             });
-            add_missing_patterns(&non_empty.decision, terms, missing, environment);
+            add_missing_patterns(&non_empty.decision, terms, missing, environment, type_arena);
             _ = terms.pop();
         }
     }

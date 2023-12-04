@@ -1,8 +1,7 @@
 use ecow::EcoString;
 
 use crate::ast::{BitArrayOption, SrcSpan};
-use crate::type_::Type;
-use std::sync::Arc;
+use crate::type_::TypeId;
 
 //
 //  Public Interface
@@ -10,7 +9,7 @@ use std::sync::Arc;
 
 pub fn type_options_for_value<TypedValue>(
     input_options: &[BitArrayOption<TypedValue>],
-) -> Result<Arc<Type>, Error>
+) -> Result<TypeId, Error>
 where
     TypedValue: GetLiteralValue,
 {
@@ -20,7 +19,7 @@ where
 pub fn type_options_for_pattern<TypedValue>(
     input_options: &[BitArrayOption<TypedValue>],
     must_have_size: bool,
-) -> Result<Arc<Type>, Error>
+) -> Result<TypeId, Error>
 where
     TypedValue: GetLiteralValue,
 {
@@ -46,7 +45,7 @@ impl<T> SegmentOptionCategories<'_, T> {
         }
     }
 
-    fn segment_type(&self) -> Arc<Type> {
+    fn segment_type(&self) -> TypeId {
         use BitArrayOption::*;
         let default = Int {
             location: SrcSpan::default(),
@@ -76,7 +75,7 @@ fn type_options<TypedValue>(
     input_options: &[BitArrayOption<TypedValue>],
     value_mode: bool,
     must_have_size: bool,
-) -> Result<Arc<Type>, Error>
+) -> Result<TypeId, Error>
 where
     TypedValue: GetLiteralValue,
 {
@@ -278,7 +277,7 @@ pub trait GetLiteralValue {
     fn as_int_literal(&self) -> Option<i64>;
 }
 
-impl GetLiteralValue for crate::ast::Pattern<Arc<Type>> {
+impl GetLiteralValue for crate::ast::Pattern<TypeId> {
     fn as_int_literal(&self) -> Option<i64> {
         match self {
             crate::ast::Pattern::Int { value, .. } => {

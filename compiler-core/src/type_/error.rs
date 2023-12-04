@@ -4,14 +4,13 @@ use crate::{
 };
 
 use camino::Utf8PathBuf;
-use std::sync::Arc;
 
 use crate::ast::Layer;
 use ecow::EcoString;
 #[cfg(test)]
 use pretty_assertions::assert_eq;
 
-use super::FieldAccessUsage;
+use super::{FieldAccessUsage, TypeId};
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum Error {
@@ -73,12 +72,12 @@ pub enum Error {
 
     NotFn {
         location: SrcSpan,
-        typ: Arc<Type>,
+        typ: TypeId,
     },
 
     UnknownRecordField {
         location: SrcSpan,
-        typ: Arc<Type>,
+        typ: TypeId,
         label: EcoString,
         fields: Vec<EcoString>,
         usage: FieldAccessUsage,
@@ -110,8 +109,8 @@ pub enum Error {
     CouldNotUnify {
         location: SrcSpan,
         situation: Option<UnifyErrorSituation>,
-        expected: Arc<Type>,
-        given: Arc<Type>,
+        expected: TypeId,
+        given: TypeId,
         rigid_type_names: im::HashMap<u64, EcoString>,
     },
 
@@ -195,7 +194,7 @@ pub enum Error {
 
     NotATuple {
         location: SrcSpan,
-        given: Arc<Type>,
+        given: TypeId,
     },
 
     NotATupleUnbound {
@@ -314,7 +313,7 @@ pub enum Warning {
     Todo {
         kind: TodoKind,
         location: SrcSpan,
-        typ: Arc<Type>,
+        typ: TypeId,
     },
 
     ImplicitlyDiscardedResult {
@@ -571,7 +570,7 @@ pub fn convert_get_type_constructor_error(
 #[derive(Debug)]
 pub enum MatchFunTypeError {
     IncorrectArity { expected: usize, given: usize },
-    NotFn { typ: Arc<Type> },
+    NotFn { typ: TypeId },
 }
 
 pub fn convert_not_fun_error(
@@ -626,8 +625,8 @@ fn flip_unify_error_test() {
 }
 
 pub fn unify_enclosed_type(
-    e1: Arc<Type>,
-    e2: Arc<Type>,
+    e1: TypeId,
+    e2: TypeId,
     result: Result<(), UnifyError>,
 ) -> Result<(), UnifyError> {
     // If types cannot unify, show the type error with the enclosing types, e1 and e2.
@@ -734,8 +733,8 @@ this list don't match the type of the elements being prepended to it.",
 #[derive(Debug, PartialEq)]
 pub enum UnifyError {
     CouldNotUnify {
-        expected: Arc<Type>,
-        given: Arc<Type>,
+        expected: TypeId,
+        given: TypeId,
         situation: Option<UnifyErrorSituation>,
     },
 

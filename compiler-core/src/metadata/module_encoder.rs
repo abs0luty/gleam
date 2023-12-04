@@ -8,10 +8,10 @@ use crate::{
     schema_capnp::{self as schema, *},
     type_::{
         self, AccessorsMap, Deprecation, FieldMap, RecordAccessor, Type, TypeConstructor,
-        TypeValueConstructor, TypeVar, ValueConstructor, ValueConstructorVariant,
+        TypeValueConstructor, TypeVar, ValueConstructor, ValueConstructorVariant, TypeId,
     },
 };
-use std::{collections::HashMap, ops::Deref, sync::Arc};
+use std::{collections::HashMap, ops::Deref};
 
 #[derive(Debug)]
 pub struct ModuleEncoder<'a> {
@@ -458,7 +458,7 @@ impl<'a> ModuleEncoder<'a> {
     fn build_types(
         &mut self,
         mut builder: capnp::struct_list::Builder<'_, schema::type_::Owned>,
-        types: &[Arc<Type>],
+        types: &[TypeId],
     ) {
         for (i, type_) in types.iter().enumerate() {
             self.build_type(builder.reborrow().get(i as u32), type_);

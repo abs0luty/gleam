@@ -53,15 +53,15 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         result
     }
 
-    pub fn type_from_ast(&mut self, ast: &TypeAst) -> Result<Arc<Type>, Error> {
+    pub fn type_from_ast(&mut self, ast: &TypeAst) -> Result<TypeId, Error> {
         self.hydrator.type_from_ast(ast, self.environment)
     }
 
-    fn instantiate(&mut self, t: Arc<Type>, ids: &mut im::HashMap<u64, Arc<Type>>) -> Arc<Type> {
+    fn instantiate(&mut self, t: TypeId, ids: &mut im::HashMap<u64, TypeId>) -> TypeId {
         self.environment.instantiate(t, ids, &self.hydrator)
     }
 
-    pub fn new_unbound_var(&mut self) -> Arc<Type> {
+    pub fn new_unbound_var(&mut self) -> TypeId {
         self.environment.new_unbound_var()
     }
 
@@ -417,7 +417,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
     fn infer_fn(
         &mut self,
         args: Vec<UntypedArg>,
-        expected_args: &[Arc<Type>],
+        expected_args: &[TypeId],
         body: Vec1<UntypedStatement>,
         is_capture: bool,
         return_annotation: Option<TypeAst>,
@@ -436,11 +436,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         })
     }
 
-    fn infer_arg(
-        &mut self,
-        arg: UntypedArg,
-        expected: Option<Arc<Type>>,
-    ) -> Result<TypedArg, Error> {
+    fn infer_arg(&mut self, arg: UntypedArg, expected: Option<TypeId>) -> Result<TypedArg, Error> {
         let Arg {
             names,
             annotation,
@@ -589,7 +585,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         location: SrcSpan,
     ) -> Result<TypedExpr, Error> {
         let tuple = self.infer(tuple)?;
-        match collapse_links(tuple.type_()).as_ref() {
+        match collapse_links(tuple.type_(), self.environment.type_arena).as_ref() {
             Type::Tuple { elems } => {
                 let typ = elems
                     .get(index as usize)
@@ -663,7 +659,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         options: Vec<BitArrayOption<UntypedValue>>,
         location: SrcSpan,
         mut infer: InferFn,
-    ) -> Result<BitArraySegment<TypedValue, Arc<Type>>, Error>
+    ) -> Result<BitArraySegment<TypedValue, TypeId>, Error>
     where
         InferFn: FnMut(&mut Self, UntypedValue) -> Result<TypedValue, Error>,
         TypedValue: HasType + HasLocation + Clone + bit_array::GetLiteralValue,
@@ -907,7 +903,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
     fn infer_clause(
         &mut self,
         clause: UntypedClause,
-        subjects: &[Arc<Type>],
+        subjects: &[TypeId],
     ) -> Result<TypedClause, Error> {
         let Clause {
             pattern,
@@ -945,7 +941,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         &mut self,
         pattern: UntypedMultiPattern,
         alternatives: Vec<UntypedMultiPattern>,
-        subjects: &[Arc<Type>],
+        subjects: &[TypeId],
         location: &SrcSpan,
     ) -> Result<(TypedMultiPattern, Vec<TypedMultiPattern>), Error> {
         let mut pattern_typer = pattern::PatternTyper::new(self.environment, &self.hydrator);
@@ -1302,10 +1298,10 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
     fn infer_guard_record_access(
         &mut self,
-        container: ClauseGuard<Arc<Type>, EcoString>,
+        container: ClauseGuard<TypeId, EcoString>,
         label: EcoString,
         location: SrcSpan,
-    ) -> Result<ClauseGuard<Arc<Type>, EcoString>, Error> {
+    ) -> Result<ClauseGuard<TypeId, EcoString>, Error> {
         let container = Box::new(container);
         let container_type = container.type_();
         let (index, label, type_) = self.infer_known_record_access(
@@ -1330,7 +1326,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         label: EcoString,
         location: SrcSpan,
         record_access_erorr: Error,
-    ) -> Result<ClauseGuard<Arc<Type>, EcoString>, Error> {
+    ) -> Result<ClauseGuard<TypeId, EcoString>, Error> {
         let module_access = self
             .infer_module_access(&name, label, &location, location)
             .and_then(|ma| match ma {
@@ -1476,12 +1472,12 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
     fn infer_known_record_access(
         &mut self,
-        record_type: Arc<Type>,
+        record_type: TypeId,
         record_location: SrcSpan,
         usage: FieldAccessUsage,
         location: SrcSpan,
         label: EcoString,
-    ) -> Result<(u64, EcoString, Arc<Type>), Error> {
+    ) -> Result<(u64, EcoString, TypeId), Error> {
         if record_type.is_unbound() {
             return Err(Error::RecordAccessUnknownType {
                 location: record_location,
@@ -1494,22 +1490,23 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             label: label.clone(),
             fields,
         };
-        let accessors = match collapse_links(record_type.clone()).as_ref() {
-            // A type in the current module which may have fields
-            Type::Named { module, name, .. } if module == &self.environment.current_module => {
-                self.environment.accessors.get(name)
+        let accessors =
+            match collapse_links(record_type.clone(), self.environment.type_arena).as_ref() {
+                // A type in the current module which may have fields
+                Type::Named { module, name, .. } if module == &self.environment.current_module => {
+                    self.environment.accessors.get(name)
+                }
+
+                // A type in another module which may have fields
+                Type::Named { module, name, .. } => self
+                    .environment
+                    .importable_modules
+                    .get(module)
+                    .and_then(|module| module.accessors.get(name)),
+
+                _something_without_fields => return Err(unknown_field(vec![])),
             }
-
-            // A type in another module which may have fields
-            Type::Named { module, name, .. } => self
-                .environment
-                .importable_modules
-                .get(module)
-                .and_then(|module| module.accessors.get(name)),
-
-            _something_without_fields => return Err(unknown_field(vec![])),
-        }
-        .ok_or_else(|| unknown_field(vec![]))?;
+            .ok_or_else(|| unknown_field(vec![]))?;
         let RecordAccessor {
             index,
             label,
@@ -1909,7 +1906,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 let args = args_types
                     .iter_mut()
                     .zip(args)
-                    .map(|(typ, arg): (&mut Arc<Type>, _)| {
+                    .map(|(typ, arg): (&mut TypeId, _)| {
                         let CallArg {
                             label,
                             value,
@@ -2044,7 +2041,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         fun: UntypedExpr,
         args: Vec<CallArg<UntypedExpr>>,
         location: SrcSpan,
-    ) -> Result<(TypedExpr, Vec<TypedCallArg>, Arc<Type>), Error> {
+    ) -> Result<(TypedExpr, Vec<TypedCallArg>, TypeId), Error> {
         let fun = match fun {
             UntypedExpr::FieldAccess {
                 label,
@@ -2070,7 +2067,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         fun: TypedExpr,
         mut args: Vec<CallArg<UntypedExpr>>,
         location: SrcSpan,
-    ) -> Result<(TypedExpr, Vec<TypedCallArg>, Arc<Type>), Error> {
+    ) -> Result<(TypedExpr, Vec<TypedCallArg>, TypeId), Error> {
         // Check to see if the function accepts labelled arguments
         match self
             .get_field_map(&fun)
@@ -2092,7 +2089,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         let args = args_types
             .iter_mut()
             .zip(args)
-            .map(|(typ, arg): (&mut Arc<Type>, _)| {
+            .map(|(typ, arg): (&mut TypeId, _)| {
                 let CallArg {
                     label,
                     value,
@@ -2111,12 +2108,8 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         Ok((fun, args, return_type))
     }
 
-    fn infer_call_argument(
-        &mut self,
-        value: UntypedExpr,
-        typ: Arc<Type>,
-    ) -> Result<TypedExpr, Error> {
-        let typ = collapse_links(typ);
+    fn infer_call_argument(&mut self, value: UntypedExpr, typ: TypeId) -> Result<TypedExpr, Error> {
+        let typ = collapse_links(typ, self.environment.type_arena);
 
         let value = match (&*typ, value) {
             // If the argument is expected to be a function and we are passed a
@@ -2159,7 +2152,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
     pub fn do_infer_fn(
         &mut self,
         args: Vec<UntypedArg>,
-        expected_args: &[Arc<Type>],
+        expected_args: &[TypeId],
         body: Vec1<UntypedStatement>,
         return_annotation: &Option<TypeAst>,
     ) -> Result<(Vec<TypedArg>, Vec1<TypedStatement>), Error> {
@@ -2183,7 +2176,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         &mut self,
         args: Vec<TypedArg>,
         body: Vec1<UntypedStatement>,
-        return_type: Option<Arc<Type>>,
+        return_type: Option<TypeId>,
     ) -> Result<(Vec<TypedArg>, Vec1<TypedStatement>), Error> {
         self.in_new_scope(|body_typer| {
             // Used to track if any argument names are used more than once
@@ -2254,7 +2247,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
     fn check_let_exhaustiveness(
         &self,
         location: SrcSpan,
-        subject: Arc<Type>,
+        subject: TypeId,
         pattern: &TypedPattern,
     ) -> Result<(), Error> {
         use exhaustiveness::{Body, Column, Compiler, PatternArena, Row};
@@ -2293,8 +2286,8 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
     fn check_case_exhaustiveness(
         &self,
         location: SrcSpan,
-        subject_types: &[Arc<Type>],
-        clauses: &[Clause<TypedExpr, Arc<Type>, EcoString>],
+        subject_types: &[TypeId],
+        clauses: &[Clause<TypedExpr, TypeId, EcoString>],
     ) -> Result<(), Error> {
         use exhaustiveness::{Body, Column, Compiler, PatternArena, Row};
 

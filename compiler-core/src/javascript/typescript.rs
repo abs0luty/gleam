@@ -12,7 +12,7 @@
 //! <https://www.typescriptlang.org/docs/handbook/declaration-files/introduction.html>
 
 use crate::ast::AssignName;
-use crate::type_::{is_prelude_module, PRELUDE_MODULE_NAME};
+use crate::type_::{is_prelude_module, TypeArena, TypeId, PRELUDE_MODULE_NAME};
 use crate::{
     ast::{
         CustomType, Definition, Function, Import, ModuleConstant, TypeAlias, TypedArg,
@@ -25,7 +25,7 @@ use crate::{
 };
 use ecow::EcoString;
 use itertools::Itertools;
-use std::{collections::HashMap, ops::Deref, sync::Arc};
+use std::{collections::HashMap, ops::Deref};
 
 use super::{concat, import::Imports, line, lines, wrap_args, Output, INDENT};
 
@@ -53,9 +53,10 @@ fn id_to_type_var(id: u64) -> Document<'static> {
 
 fn name_with_generics<'a>(
     name: Document<'a>,
-    types: impl IntoIterator<Item = &'a Arc<Type>>,
+    types: impl IntoIterator<Item = TypeId>,
+    type_arena: &TypeArena,
 ) -> Document<'a> {
-    let generic_usages = collect_generic_usages(HashMap::new(), types);
+    let generic_usages = collect_generic_usages(HashMap::new(), types, type_arena);
     let generic_names: Vec<Document<'_>> = generic_usages
         .keys()
         .map(|id| id_to_type_var(*id))
@@ -80,9 +81,10 @@ fn name_with_generics<'a>(
 ///     fn(a) -> String       // `a` is `any`
 ///     fn() -> Result(a, b)  // `a` and `b` are `any`
 ///     fn(a) -> a            // `a` is a generic
-fn collect_generic_usages<'a>(
+fn collect_generic_usages(
     mut ids: HashMap<u64, u64>,
-    types: impl IntoIterator<Item = &'a Arc<Type>>,
+    types: impl IntoIterator<Item = TypeId>,
+    type_arena: &TypeArena,
 ) -> HashMap<u64, u64> {
     for typ in types {
         generic_ids(typ, &mut ids);
@@ -184,16 +186,18 @@ pub struct TypeScriptGenerator<'a> {
     aliased_module_names: HashMap<&'a str, &'a str>,
     tracker: UsageTracker,
     current_module_name_segments_count: usize,
+    type_arena: &'a TypeArena,
 }
 
 impl<'a> TypeScriptGenerator<'a> {
-    pub fn new(module: &'a TypedModule) -> Self {
+    pub fn new(module: &'a TypedModule, type_arena: &TypeArena) -> Self {
         let current_module_name_segments_count = module.name.split('/').count();
         Self {
             module,
             aliased_module_names: HashMap::new(),
             tracker: UsageTracker::default(),
             current_module_name_segments_count,
+            type_arena,
         }
     }
 
@@ -360,7 +364,7 @@ impl<'a> TypeScriptGenerator<'a> {
     fn custom_type_definition(
         &mut self,
         name: &'a str,
-        typed_parameters: &'a [Arc<Type>],
+        typed_parameters: &'a [TypeId],
         constructors: &'a [TypedRecordConstructor],
         opaque: bool,
     ) -> Vec<Output<'a>> {
@@ -376,6 +380,7 @@ impl<'a> TypeScriptGenerator<'a> {
                 name_with_generics(
                     super::maybe_escape_identifier_doc(&x.name),
                     x.arguments.iter().map(|a| &a.type_),
+                    self.type_arena,
                 )
             });
             concat(Itertools::intersperse(constructors, break_("| ", " | ")))
@@ -383,7 +388,7 @@ impl<'a> TypeScriptGenerator<'a> {
 
         definitions.push(Ok(docvec![
             "export type ",
-            name_with_generics(Document::String(format!("{name}$")), typed_parameters),
+            name_with_generics(Document::String(format!("{name}$")), typed_parameters, self.type_arena),
             " = ",
             definition,
             ";",
@@ -408,7 +413,8 @@ impl<'a> TypeScriptGenerator<'a> {
             "class ",
             name_with_generics(
                 super::maybe_escape_identifier_doc(&constructor.name),
-                constructor.arguments.iter().map(|a| &a.type_)
+                constructor.arguments.iter().map(|a| &a.type_),
+                self.type_arena
             ),
             " extends _.CustomType {"
         ];
@@ -469,11 +475,12 @@ impl<'a> TypeScriptGenerator<'a> {
         &mut self,
         name: &'a str,
         args: &'a [TypedArg],
-        return_type: &'a Arc<Type>,
+        return_type: &'a TypeId,
     ) -> Output<'a> {
         let generic_usages = collect_generic_usages(
             HashMap::new(),
             std::iter::once(return_type).chain(args.iter().map(|a| &a.type_)),
+            self.type_arena
         );
         let generic_names: Vec<Document<'_>> = generic_usages
             .iter()
@@ -626,7 +633,7 @@ impl<'a> TypeScriptGenerator<'a> {
     fn print_prelude_type(
         &mut self,
         name: &str,
-        args: &[Arc<Type>],
+        args: &[TypeId],
         generic_usages: Option<&HashMap<u64, u64>>,
     ) -> Document<'static> {
         match name {
@@ -668,7 +675,7 @@ impl<'a> TypeScriptGenerator<'a> {
     fn print_type_app(
         &mut self,
         name: &str,
-        args: &[Arc<Type>],
+        args: &[TypeId],
         module: &str,
         generic_usages: Option<&HashMap<u64, u64>>,
     ) -> Document<'static> {
@@ -700,7 +707,7 @@ impl<'a> TypeScriptGenerator<'a> {
     ///
     fn print_fn(
         &mut self,
-        args: &[Arc<Type>],
+        args: &[TypeId],
         retrn: &Type,
         generic_usages: Option<&HashMap<u64, u64>>,
     ) -> Document<'static> {

@@ -54,6 +54,9 @@ pub struct Environment<'a> {
     pub entity_usages: Vec<HashMap<EcoString, (EntityKind, SrcSpan, bool)>>,
 
     pub ambiguous_imported_items: HashMap<EcoString, LayerUsage>,
+
+    /// ID-based memory arena that stores all types.
+    pub type_arena: &'a TypeArena,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,11 +82,13 @@ impl<'a> Environment<'a> {
         target: Target,
         importable_modules: &'a im::HashMap<EcoString, ModuleInterface>,
         warnings: &'a TypeWarningEmitter,
+        type_arena: &'a TypeArena,
     ) -> Self {
         let prelude = importable_modules
             .get(PRELUDE_MODULE_NAME)
             .expect("Unable to find prelude in importable modules");
         Self {
+            type_arena,
             previous_id: ids.next(),
             ids,
             target,
@@ -179,19 +184,19 @@ impl<'a> Environment<'a> {
     /// Create a new unbound type that is a specific type, we just don't
     /// know which one yet.
     ///
-    pub fn new_unbound_var(&mut self) -> Arc<Type> {
+    pub fn new_unbound_var(&mut self) -> TypeId {
         unbound_var(self.next_uid())
     }
 
     /// Create a new generic type that can stand in for any type.
     ///
-    pub fn new_generic_var(&mut self) -> Arc<Type> {
+    pub fn new_generic_var(&mut self) -> TypeId {
         generic_var(self.next_uid())
     }
 
     /// Insert a variable in the current scope.
     ///
-    pub fn insert_local_variable(&mut self, name: EcoString, location: SrcSpan, typ: Arc<Type>) {
+    pub fn insert_local_variable(&mut self, name: EcoString, location: SrcSpan, typ: TypeId) {
         let _ = self.scope.insert(
             name,
             ValueConstructor {
@@ -204,11 +209,7 @@ impl<'a> Environment<'a> {
     }
 
     /// Insert a constant in the current scope
-    pub fn insert_local_constant(
-        &mut self,
-        name: EcoString,
-        literal: Constant<Arc<Type>, EcoString>,
-    ) {
+    pub fn insert_local_constant(&mut self, name: EcoString, literal: Constant<TypeId, EcoString>) {
         let _ = self.scope.insert(
             name,
             ValueConstructor {
@@ -228,7 +229,7 @@ impl<'a> Environment<'a> {
         &mut self,
         name: EcoString,
         variant: ValueConstructorVariant,
-        typ: Arc<Type>,
+        typ: TypeId,
         public: bool,
         deprecation: Deprecation,
     ) {
@@ -340,7 +341,7 @@ impl<'a> Environment<'a> {
         }?;
 
         if name == "BitString"
-            && t.typ.is_bit_array()
+            && t.typ.is_bit_array(self.type_arena)
             && (module_alias.is_none() || module_alias.as_deref() == Some("gleam"))
         {
             self.warnings
@@ -431,10 +432,10 @@ impl<'a> Environment<'a> {
     ///
     pub fn instantiate(
         &mut self,
-        t: Arc<Type>,
-        ids: &mut im::HashMap<u64, Arc<Type>>,
+        t: TypeId,
+        ids: &mut im::HashMap<u64, TypeId>,
         hydrator: &Hydrator,
-    ) -> Arc<Type> {
+    ) -> TypeId {
         match t.deref() {
             Type::Named {
                 public,
@@ -646,7 +647,7 @@ impl<'a> Environment<'a> {
 ///
 /// It two types are found to not be the same an error is returned.
 ///
-pub fn unify(t1: Arc<Type>, t2: Arc<Type>) -> Result<(), UnifyError> {
+pub fn unify(t1: TypeId, t2: TypeId) -> Result<(), UnifyError> {
     if t1 == t2 {
         return Ok(());
     }
@@ -660,7 +661,7 @@ pub fn unify(t1: Arc<Type>, t2: Arc<Type>) -> Result<(), UnifyError> {
 
     if let Type::Var { type_: typ } = t1.deref() {
         enum Action {
-            Unify(Arc<Type>),
+            Unify(TypeId),
             CouldNotUnify,
             Link,
         }

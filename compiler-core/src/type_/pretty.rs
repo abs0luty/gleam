@@ -1,11 +1,10 @@
-use super::{Type, TypeVar};
+use super::{Type, TypeArena, TypeId, TypeVar};
 use crate::{
     docvec,
     pretty::{nil, *},
 };
 use ecow::EcoString;
 use itertools::Itertools;
-use std::sync::Arc;
 
 #[cfg(test)]
 use super::*;
@@ -18,14 +17,15 @@ use pretty_assertions::assert_eq;
 const INDENT: isize = 2;
 
 #[derive(Debug, Default)]
-pub struct Printer {
+pub struct Printer<'ta> {
     names: im::HashMap<u64, EcoString>,
     uid: u64,
     // A mapping of printd type names to the module that they are defined in.
     printed_types: im::HashMap<EcoString, EcoString>,
+    type_arena: &'ta TypeArena,
 }
 
-impl Printer {
+impl<'ta> Printer<'ta> {
     pub fn new() -> Self {
         Default::default()
     }
@@ -36,7 +36,7 @@ impl Printer {
 
     /// Render a Type as a well formatted string.
     ///
-    pub fn pretty_print(&mut self, typ: &Type, initial_indent: usize) -> String {
+    pub fn pretty_print(&mut self, typ: &TypeId, initial_indent: usize) -> String {
         let mut buffer = String::with_capacity(initial_indent);
         for _ in 0..initial_indent {
             buffer.push(' ');
@@ -51,8 +51,8 @@ impl Printer {
     // TODO: have this function return a Document that borrows from the Type.
     // Is this possible? The lifetime would have to go through the Arc<Refcell<Type>>
     // for TypeVar::Link'd types.
-    pub fn print<'a>(&mut self, typ: &Type) -> Document<'a> {
-        match typ {
+    pub fn print<'a>(&mut self, typ: &TypeId) -> Document<'a> {
+        match self.type_arena.get(typ) {
             Type::Named {
                 name, args, module, ..
             } => {
@@ -140,7 +140,7 @@ impl Printer {
         chars.into_iter().rev().collect()
     }
 
-    fn args_to_gleam_doc(&mut self, args: &[Arc<Type>]) -> Document<'static> {
+    fn args_to_gleam_doc(&mut self, args: &[TypeId]) -> Document<'static> {
         if args.is_empty() {
             return nil();
         }
@@ -448,6 +448,6 @@ fn function_test() {
 }
 
 #[cfg(test)]
-fn pretty_print(typ: Arc<Type>) -> String {
+fn pretty_print(typ: TypeId) -> String {
     Printer::new().pretty_print(&typ, 0)
 }

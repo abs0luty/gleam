@@ -6,14 +6,14 @@ mod pattern;
 #[cfg(test)]
 mod tests;
 
-use crate::type_::is_prelude_module;
+use crate::type_::{is_prelude_module, TypeId};
 use crate::{
     ast::{CustomType, Function, Import, ModuleConstant, TypeAlias, *},
     docvec,
     line_numbers::LineNumbers,
     pretty::*,
     type_::{
-        ModuleValueConstructor, PatternConstructor, Type, TypeVar, ValueConstructor,
+        ModuleValueConstructor, PatternConstructor, Type, TypeArena, TypeVar, ValueConstructor,
         ValueConstructorVariant,
     },
     Result,
@@ -120,7 +120,7 @@ pub fn records(module: &TypedModule) -> Vec<(&str, String)> {
         .collect()
 }
 
-pub fn record_definition(name: &str, fields: &[(&str, Arc<Type>)]) -> String {
+pub fn record_definition(name: &str, fields: &[(&str, TypeId)]) -> String {
     let name = &name.to_snake_case();
     let type_printer = TypePrinter::new("").var_as_any();
     let fields = fields.iter().map(move |(name, type_)| {
@@ -1571,7 +1571,7 @@ fn expr<'a>(expression: &'a TypedExpr, env: &mut Env<'a>) -> Document<'a> {
 }
 
 fn pipeline<'a>(
-    assignments: &'a [Assignment<Arc<Type>, TypedExpr>],
+    assignments: &'a [Assignment<TypeId, TypedExpr>],
     finally: &'a TypedExpr,
     env: &mut Env<'a>,
 ) -> Document<'a> {
@@ -1606,8 +1606,13 @@ fn tuple_index<'a>(tuple: &'a TypedExpr, index: u64, env: &mut Env<'a>) -> Docum
         .append(wrap_args([index_doc, tuple_doc]))
 }
 
-fn module_select_fn<'a>(typ: Arc<Type>, module_name: &'a str, label: &'a str) -> Document<'a> {
-    match crate::type_::collapse_links(typ).as_ref() {
+fn module_select_fn<'a>(
+    typ: TypeId,
+    module_name: &'a str,
+    label: &'a str,
+    type_arena: &'a TypeArena,
+) -> Document<'a> {
+    match crate::type_::collapse_links(typ, type_arena).as_ref() {
         crate::type_::Type::Fn { args, .. } => "fun "
             .to_doc()
             .append(module_name_to_erlang(module_name))
@@ -1789,7 +1794,7 @@ pub fn is_erlang_standard_library_module(name: &str) -> bool {
 //     fn(a) -> a            // `a` is a type var
 fn collect_type_var_usages<'a>(
     mut ids: HashMap<u64, u64>,
-    types: impl IntoIterator<Item = &'a Arc<Type>>,
+    types: impl IntoIterator<Item = &'a TypeId>,
 ) -> HashMap<u64, u64> {
     for typ in types {
         type_var_ids(typ, &mut ids);
@@ -1930,7 +1935,7 @@ impl<'a> TypePrinter<'a> {
         }
     }
 
-    fn print_prelude_type(&self, name: &str, args: &[Arc<Type>]) -> Document<'static> {
+    fn print_prelude_type(&self, name: &str, args: &[TypeId]) -> Document<'static> {
         match name {
             "Nil" => "nil".to_doc(),
             "Int" | "UtfCodepoint" => "integer()".to_doc(),
@@ -1955,7 +1960,7 @@ impl<'a> TypePrinter<'a> {
         }
     }
 
-    fn print_type_app(&self, module: &str, name: &str, args: &[Arc<Type>]) -> Document<'static> {
+    fn print_type_app(&self, module: &str, name: &str, args: &[TypeId]) -> Document<'static> {
         let args = concat(Itertools::intersperse(
             args.iter().map(|a| self.print(a)),
             ", ".to_doc(),
@@ -1968,7 +1973,7 @@ impl<'a> TypePrinter<'a> {
         }
     }
 
-    fn print_fn(&self, args: &[Arc<Type>], retrn: &Type) -> Document<'static> {
+    fn print_fn(&self, args: &[TypeId], retrn: &Type) -> Document<'static> {
         let args = concat(Itertools::intersperse(
             args.iter().map(|a| self.print(a)),
             ", ".to_doc(),

@@ -3,7 +3,8 @@ use crate::build::{Runtime, Target};
 use crate::diagnostic::{Diagnostic, Label, Location};
 use crate::type_::error::MissingAnnotation;
 use crate::type_::{error::PatternMatchKind, FieldAccessUsage};
-use crate::{ast::BinOp, parse::error::ParseErrorType, type_::Type};
+use crate::type_::{TypeArena, TypeId};
+use crate::{ast::BinOp, parse::error::ParseErrorType};
 use crate::{
     bit_array,
     diagnostic::Level,
@@ -2704,28 +2705,28 @@ fn write_cycle(buffer: &mut String, cycle: &[EcoString]) {
     buffer.push_str("    └─────┘\n");
 }
 
-fn hint_alternative_operator(op: &BinOp, given: &Type) -> Option<String> {
+fn hint_alternative_operator(op: &BinOp, given: TypeId, type_arena: &TypeArena) -> Option<String> {
     match op {
-        BinOp::AddInt if given.is_float() => Some(hint_numeric_message("+.", "Float")),
-        BinOp::DivInt if given.is_float() => Some(hint_numeric_message("/.", "Float")),
-        BinOp::GtEqInt if given.is_float() => Some(hint_numeric_message(">=.", "Float")),
-        BinOp::GtInt if given.is_float() => Some(hint_numeric_message(">.", "Float")),
-        BinOp::LtEqInt if given.is_float() => Some(hint_numeric_message("<=.", "Float")),
-        BinOp::LtInt if given.is_float() => Some(hint_numeric_message("<.", "Float")),
-        BinOp::MultInt if given.is_float() => Some(hint_numeric_message("*.", "Float")),
-        BinOp::SubInt if given.is_float() => Some(hint_numeric_message("-.", "Float")),
+        BinOp::AddInt if given.is_float(type_arena) => Some(hint_numeric_message("+.", "Float")),
+        BinOp::DivInt if given.is_float(type_arena) => Some(hint_numeric_message("/.", "Float")),
+        BinOp::GtEqInt if given.is_float(type_arena) => Some(hint_numeric_message(">=.", "Float")),
+        BinOp::GtInt if given.is_float(type_arena) => Some(hint_numeric_message(">.", "Float")),
+        BinOp::LtEqInt if given.is_float(type_arena) => Some(hint_numeric_message("<=.", "Float")),
+        BinOp::LtInt if given.is_float(type_arena) => Some(hint_numeric_message("<.", "Float")),
+        BinOp::MultInt if given.is_float(type_arena) => Some(hint_numeric_message("*.", "Float")),
+        BinOp::SubInt if given.is_float(type_arena) => Some(hint_numeric_message("-.", "Float")),
 
-        BinOp::AddFloat if given.is_int() => Some(hint_numeric_message("+", "Int")),
-        BinOp::DivFloat if given.is_int() => Some(hint_numeric_message("/", "Int")),
-        BinOp::GtEqFloat if given.is_int() => Some(hint_numeric_message(">=", "Int")),
-        BinOp::GtFloat if given.is_int() => Some(hint_numeric_message(">", "Int")),
-        BinOp::LtEqFloat if given.is_int() => Some(hint_numeric_message("<=", "Int")),
-        BinOp::LtFloat if given.is_int() => Some(hint_numeric_message("<", "Int")),
-        BinOp::MultFloat if given.is_int() => Some(hint_numeric_message("*", "Int")),
-        BinOp::SubFloat if given.is_int() => Some(hint_numeric_message("-", "Int")),
+        BinOp::AddFloat if given.is_int(type_arena) => Some(hint_numeric_message("+", "Int")),
+        BinOp::DivFloat if given.is_int(type_arena) => Some(hint_numeric_message("/", "Int")),
+        BinOp::GtEqFloat if given.is_int(type_arena) => Some(hint_numeric_message(">=", "Int")),
+        BinOp::GtFloat if given.is_int(type_arena) => Some(hint_numeric_message(">", "Int")),
+        BinOp::LtEqFloat if given.is_int(type_arena) => Some(hint_numeric_message("<=", "Int")),
+        BinOp::LtFloat if given.is_int(type_arena) => Some(hint_numeric_message("<", "Int")),
+        BinOp::MultFloat if given.is_int(type_arena) => Some(hint_numeric_message("*", "Int")),
+        BinOp::SubFloat if given.is_int(type_arena) => Some(hint_numeric_message("-", "Int")),
 
-        BinOp::AddInt if given.is_string() => Some(hint_string_message()),
-        BinOp::AddFloat if given.is_string() => Some(hint_string_message()),
+        BinOp::AddInt if given.is_string(type_arena) => Some(hint_string_message()),
+        BinOp::AddFloat if given.is_string(type_arena) => Some(hint_string_message()),
 
         _ => None,
     }

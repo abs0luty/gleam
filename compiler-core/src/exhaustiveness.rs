@@ -38,7 +38,7 @@ use crate::{
     ast::AssignName,
     type_::{
         collapse_links, error::UnknownTypeConstructorError, is_prelude_module, Environment, Type,
-        TypeValueConstructor, TypeValueConstructorParameter, TypeVar,
+        TypeId, TypeValueConstructor, TypeValueConstructorParameter, TypeVar,
     },
 };
 use ecow::EcoString;
@@ -76,7 +76,7 @@ impl Body {
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct Variable {
     id: usize,
-    type_: Arc<Type>,
+    type_: TypeId,
 }
 
 /// A single case (or row) in a match expression/table.
@@ -550,7 +550,7 @@ impl<'a> Compiler<'a> {
         &mut self,
         rows: Vec<Row>,
         branch_var: Variable,
-        element_type: Arc<Type>,
+        element_type: TypeId,
     ) -> Decision {
         let mut empty_rows = vec![];
         let mut non_empty_rows = vec![];
@@ -714,7 +714,7 @@ impl<'a> Compiler<'a> {
             .max_by_key(|var| counts.get(&var.id).copied().unwrap_or(0))
             .expect("The first row must have at least one column");
 
-        match collapse_links(variable.type_.clone()).as_ref() {
+        match collapse_links(variable.type_.clone(), self.environment.type_arena).as_ref() {
             Type::Fn { .. } | Type::Var { .. } => BranchMode::Infinite { variable },
 
             Type::Named { module, name, .. }
@@ -756,7 +756,7 @@ impl<'a> Compiler<'a> {
     ///
     /// In a real compiler you'd have to ensure these variables don't conflict
     /// with other variables.
-    pub fn new_variable(&mut self, type_: Arc<Type>) -> Variable {
+    pub fn new_variable(&mut self, type_: TypeId) -> Variable {
         let var = Variable {
             id: self.variable_id,
             type_,
@@ -776,7 +776,7 @@ impl<'a> Compiler<'a> {
 
     fn constructor_parameter_variables(
         &mut self,
-        type_: &Arc<Type>,
+        type_: &TypeId,
         parameters: &[TypeValueConstructorParameter],
     ) -> Vec<Variable> {
         parameters
@@ -787,7 +787,7 @@ impl<'a> Compiler<'a> {
 
     fn constructor_parameter_variable(
         &mut self,
-        type_: &Arc<Type>,
+        type_: &TypeId,
         parameter: &TypeValueConstructorParameter,
     ) -> Variable {
         let type_ = match parameter.generic_type_parameter_index {
@@ -799,7 +799,7 @@ impl<'a> Compiler<'a> {
         self.new_variable(type_)
     }
 
-    fn new_variables(&mut self, type_ids: &[Arc<Type>]) -> Vec<Variable> {
+    fn new_variables(&mut self, type_ids: &[TypeId]) -> Vec<Variable> {
         type_ids
             .iter()
             .map(|t| self.new_variable(t.clone()))
@@ -807,7 +807,7 @@ impl<'a> Compiler<'a> {
     }
 }
 
-fn generic_named_type_parameter(t: &Type, i: usize) -> Option<Arc<Type>> {
+fn generic_named_type_parameter(t: &Type, i: usize) -> Option<TypeId> {
     match t {
         Type::Named { args, .. } => args.get(i).cloned(),
 
@@ -827,11 +827,11 @@ enum BranchMode {
     },
     Tuple {
         variable: Variable,
-        types: Vec<Arc<Type>>,
+        types: Vec<TypeId>,
     },
     List {
         variable: Variable,
-        element_type: Arc<Type>,
+        element_type: TypeId,
     },
     NamedType {
         variable: Variable,

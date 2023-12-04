@@ -10,14 +10,13 @@ use crate::{
     },
     line_numbers::LineNumbers,
     paths::ProjectPaths,
-    type_::{pretty::Printer, PreludeType, Type, ValueConstructorVariant},
+    type_::{pretty::Printer, PreludeType, Type, TypeId, ValueConstructorVariant},
     Error, Result, Warning,
 };
 use camino::Utf8PathBuf;
 use ecow::EcoString;
 use lsp::CodeAction;
 use lsp_types::{self as lsp, Hover, HoverContents, MarkedString, Url};
-use std::sync::Arc;
 use strum::IntoEnumIterator;
 
 use super::{
@@ -504,10 +503,7 @@ fn hover_for_pattern(pattern: &TypedPattern, line_numbers: LineNumbers) -> Hover
     }
 }
 
-fn hover_for_function_head(
-    fun: &Function<Arc<Type>, TypedExpr>,
-    line_numbers: LineNumbers,
-) -> Hover {
+fn hover_for_function_head(fun: &Function<TypeId, TypedExpr>, line_numbers: LineNumbers) -> Hover {
     let empty_str = EcoString::from("");
     let documentation = fun.documentation.as_ref().unwrap_or(&empty_str);
     let function_type = Type::Fn {
@@ -527,7 +523,7 @@ fn hover_for_function_head(
     }
 }
 
-fn hover_for_function_argument(argument: &Arg<Arc<Type>>, line_numbers: LineNumbers) -> Hover {
+fn hover_for_function_argument(argument: &Arg<TypeId>, line_numbers: LineNumbers) -> Hover {
     let type_ = Printer::new().pretty_print(&argument.type_, 0);
     let contents = format!("```gleam\n{type_}\n```");
     Hover {
@@ -537,7 +533,7 @@ fn hover_for_function_argument(argument: &Arg<Arc<Type>>, line_numbers: LineNumb
 }
 
 fn hover_for_module_constant(
-    constant: &ModuleConstant<Arc<Type>, EcoString>,
+    constant: &ModuleConstant<TypeId, EcoString>,
     line_numbers: LineNumbers,
 ) -> Hover {
     let empty_str = EcoString::from("");

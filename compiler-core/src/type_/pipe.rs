@@ -5,7 +5,7 @@ use vec1::Vec1;
 #[derive(Debug)]
 pub(crate) struct PipeTyper<'a, 'b, 'c> {
     size: usize,
-    argument_type: Arc<Type>,
+    argument_type: TypeId,
     argument_location: SrcSpan,
     location: SrcSpan,
     assignments: Vec<TypedAssignment>,

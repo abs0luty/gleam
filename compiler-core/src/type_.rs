@@ -28,6 +28,7 @@ use crate::{
 };
 use error::*;
 use hydrator::Hydrator;
+use id_arena::{Arena, Id};
 use itertools::Itertools;
 use std::{
     cell::RefCell,
@@ -37,7 +38,30 @@ use std::{
 };
 
 pub trait HasType {
-    fn type_(&self) -> Arc<Type>;
+    fn type_(&self) -> TypeId;
+}
+
+pub type TypeId = Id<Type>;
+
+#[derive(Debug, Default)]
+pub struct TypeArena {
+    arena: Arena<Type>,
+}
+
+impl TypeArena {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn get(&self, id: TypeId) -> &Type {
+        self.arena.get(id).expect(&format!(
+            "Cannot resolve type with id {id:?} in the type arena"
+        ))
+    }
+
+    pub fn alloc(&mut self, type_: Type) -> TypeId {
+        self.arena.alloc(type_)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,15 +78,12 @@ pub enum Type {
         public: bool,
         module: EcoString,
         name: EcoString,
-        args: Vec<Arc<Type>>,
+        args: Vec<TypeId>,
     },
 
     /// The type of a function. It takes arguments and returns a value.
     ///
-    Fn {
-        args: Vec<Arc<Type>>,
-        retrn: Arc<Type>,
-    },
+    Fn { args: Vec<TypeId>, retrn: TypeId },
 
     /// A type variable. See the contained `TypeVar` enum for more information.
     ///
@@ -72,13 +93,13 @@ pub enum Type {
     /// can have a different type, so the `tuple` type is the sum of all the
     /// contained types.
     ///
-    Tuple { elems: Vec<Arc<Type>> },
+    Tuple { elems: Vec<TypeId> },
 }
 
 impl Type {
-    pub fn is_result_constructor(&self) -> bool {
+    pub fn is_result_constructor(&self, arena: &TypeArena) -> bool {
         match self {
-            Type::Fn { retrn, .. } => retrn.is_result(),
+            Type::Fn { retrn, .. } => arena.get(*retrn).is_result(),
             _ => false,
         }
     }
@@ -95,78 +116,78 @@ impl Type {
         matches!(self, Self::Var { type_: typ } if typ.borrow().is_variable())
     }
 
-    pub fn return_type(&self) -> Option<Arc<Self>> {
+    pub fn return_type(&self) -> Option<TypeId> {
         match self {
-            Self::Fn { retrn, .. } => Some(retrn.clone()),
+            Self::Fn { retrn, .. } => Some(*retrn),
             _ => None,
         }
     }
 
-    pub fn fn_types(&self) -> Option<(Vec<Arc<Self>>, Arc<Self>)> {
+    pub fn fn_types(&self) -> Option<(Vec<TypeId>, TypeId)> {
         match self {
-            Self::Fn { args, retrn, .. } => Some((args.clone(), retrn.clone())),
+            Self::Fn { args, retrn, .. } => Some((args.clone(), *retrn)),
             _ => None,
         }
     }
 
-    pub fn is_nil(&self) -> bool {
+    pub fn is_nil(&self, arena: &TypeArena) -> bool {
         match self {
             Self::Named { module, name, .. } if "Nil" == name && is_prelude_module(module) => true,
-            Self::Var { type_ } => type_.borrow().is_nil(),
+            Self::Var { type_ } => type_.borrow().is_nil(arena),
             _ => false,
         }
     }
 
-    pub fn is_bit_array(&self) -> bool {
+    pub fn is_bit_array(&self, arena: &TypeArena) -> bool {
         match self {
             Self::Named { module, name, .. } if "BitArray" == name && is_prelude_module(module) => {
                 true
             }
-            Self::Var { type_ } => type_.borrow().is_nil(),
+            Self::Var { type_ } => type_.borrow().is_nil(arena),
             _ => false,
         }
     }
 
-    pub fn is_bool(&self) -> bool {
+    pub fn is_bool(&self, arena: &TypeArena) -> bool {
         match self {
             Self::Named { module, name, .. } if "Bool" == name && is_prelude_module(module) => true,
-            Self::Var { type_ } => type_.borrow().is_bool(),
+            Self::Var { type_ } => type_.borrow().is_bool(arena),
             _ => false,
         }
     }
 
-    pub fn is_int(&self) -> bool {
+    pub fn is_int(&self, arena: &TypeArena) -> bool {
         match self {
             Self::Named { module, name, .. } if "Int" == name && is_prelude_module(module) => true,
-            Self::Var { type_ } => type_.borrow().is_int(),
+            Self::Var { type_ } => type_.borrow().is_int(arena),
             _ => false,
         }
     }
 
-    pub fn is_float(&self) -> bool {
+    pub fn is_float(&self, arena: &TypeArena) -> bool {
         match self {
             Self::Named { module, name, .. } if "Float" == name && is_prelude_module(module) => {
                 true
             }
-            Self::Var { type_ } => type_.borrow().is_float(),
+            Self::Var { type_ } => type_.borrow().is_float(arena),
             _ => false,
         }
     }
 
-    pub fn is_string(&self) -> bool {
+    pub fn is_string(&self, arena: &TypeArena) -> bool {
         match self {
             Self::Named { module, name, .. } if "String" == name && is_prelude_module(module) => {
                 true
             }
-            Self::Var { type_ } => type_.borrow().is_string(),
+            Self::Var { type_ } => type_.borrow().is_string(arena),
             _ => false,
         }
     }
 
-    pub fn named_type_name(&self) -> Option<(EcoString, EcoString)> {
+    pub fn named_type_name(&self, arena: &TypeArena) -> Option<(EcoString, EcoString)> {
         match self {
             Self::Named { module, name, .. } => Some((module.clone(), name.clone())),
-            Self::Var { type_ } => type_.borrow().named_type_name(),
+            Self::Var { type_ } => type_.borrow().named_type_name(arena),
             _ => None,
         }
     }
@@ -184,7 +205,8 @@ impl Type {
         name: &str,
         arity: usize,
         environment: &mut Environment<'_>,
-    ) -> Option<Vec<Arc<Self>>> {
+        arena: &mut TypeArena,
+    ) -> Option<Vec<TypeId>> {
         match self {
             Self::Named {
                 module: m,
@@ -202,7 +224,14 @@ impl Type {
             Self::Var { type_: typ } => {
                 let args: Vec<_> = match typ.borrow().deref() {
                     TypeVar::Link { type_: typ } => {
-                        return typ.get_app_args(public, module, name, arity, environment);
+                        return arena.get(*typ).get_app_args(
+                            public,
+                            module,
+                            name,
+                            arity,
+                            environment,
+                            arena,
+                        );
                     }
 
                     TypeVar::Unbound { .. } => {
@@ -215,7 +244,7 @@ impl Type {
                 // We are an unbound type variable! So convert us to a type link
                 // to the desired type.
                 *typ.borrow_mut() = TypeVar::Link {
-                    type_: Arc::new(Self::Named {
+                    type_: arena.alloc(Self::Named {
                         name: name.into(),
                         module: module.into(),
                         args: args.clone(),
@@ -229,7 +258,7 @@ impl Type {
         }
     }
 
-    pub fn find_private_type(&self) -> Option<Self> {
+    pub fn find_private_type(&self, arena: &TypeArena) -> Option<Self> {
         match self {
             Self::Named { public: false, .. } => Some(self.clone()),
 
@@ -237,16 +266,19 @@ impl Type {
 
             Self::Tuple { elems, .. } => elems.iter().find_map(|t| t.find_private_type()),
 
-            Self::Fn { retrn, args, .. } => retrn
-                .find_private_type()
-                .or_else(|| args.iter().find_map(|t| t.find_private_type())),
+            Self::Fn { retrn, args, .. } => {
+                arena.get(*retrn).find_private_type(arena).or_else(|| {
+                    args.iter()
+                        .find_map(|t| arena.get(*t).find_private_type(arena))
+                })
+            }
 
             Self::Var { type_: typ, .. } => match typ.borrow().deref() {
                 TypeVar::Unbound { .. } => None,
 
                 TypeVar::Generic { .. } => None,
 
-                TypeVar::Link { type_: typ, .. } => typ.find_private_type(),
+                TypeVar::Link { type_: typ, .. } => arena.get(*typ).find_private_type(arena),
             },
         }
     }
@@ -259,19 +291,20 @@ impl Type {
     }
 }
 
-pub fn collapse_links(t: Arc<Type>) -> Arc<Type> {
-    if let Type::Var { type_: typ } = t.deref() {
+pub fn collapse_links(type_id: TypeId, arena: &TypeArena) -> TypeId {
+    if let Type::Var { type_: typ } = arena.get(type_id) {
         if let TypeVar::Link { type_: typ } = typ.borrow().deref() {
-            return collapse_links(typ.clone());
+            return collapse_links(*typ, arena);
         }
     }
-    t
+
+    type_id
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccessorsMap {
     pub public: bool,
-    pub type_: Arc<Type>,
+    pub type_: TypeId,
     pub accessors: HashMap<EcoString, RecordAccessor>,
 }
 
@@ -280,7 +313,7 @@ pub struct RecordAccessor {
     // TODO: smaller int. Doesn't need to be this big
     pub index: u64,
     pub label: EcoString,
-    pub type_: Arc<Type>,
+    pub type_: TypeId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -293,12 +326,12 @@ pub enum ValueConstructorVariant {
         documentation: Option<EcoString>,
         location: SrcSpan,
         module: EcoString,
-        literal: Constant<Arc<Type>, EcoString>,
+        literal: Constant<TypeId, EcoString>,
     },
 
     /// A constant defined locally, for example when pattern matching on string literals
     LocalConstant {
-        literal: Constant<Arc<Type>, EcoString>,
+        literal: Constant<TypeId, EcoString>,
     },
 
     /// A function belonging to the module
@@ -327,7 +360,7 @@ pub enum ValueConstructorVariant {
 impl ValueConstructorVariant {
     fn to_module_value_constructor(
         &self,
-        type_: Arc<Type>,
+        type_: TypeId,
         module_name: &EcoString,
         function_name: &EcoString,
     ) -> ModuleValueConstructor {
@@ -417,7 +450,7 @@ pub enum ModuleValueConstructor {
     Record {
         name: EcoString,
         arity: u16,
-        type_: Arc<Type>,
+        type_: TypeId,
         field_map: Option<FieldMap>,
         location: SrcSpan,
         documentation: Option<EcoString>,
@@ -495,7 +528,7 @@ pub struct TypeValueConstructor {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeValueConstructorParameter {
     /// This type of this parameter
-    pub type_: Arc<Type>,
+    pub type_: TypeId,
     /// If this type is a generic type parameter then this is the index of the
     /// parameter.
     /// For example, in `type Type(a) { Value(a) }` the `a` in Value(a)` has an
@@ -610,7 +643,7 @@ pub enum TypeVar {
     /// Link is type variable where it was an unbound variable but we worked out
     /// that it is some other type and now we point to that one.
     ///
-    Link { type_: Arc<Type> },
+    Link { type_: TypeId },
     /// A Generic variable stands in for any possible type and cannot be
     /// specialised to any one type
     ///
@@ -635,44 +668,44 @@ impl TypeVar {
         matches!(self, Self::Unbound { .. } | Self::Generic { .. })
     }
 
-    pub fn is_nil(&self) -> bool {
+    pub fn is_nil(&self, arena: &TypeArena) -> bool {
         match self {
-            Self::Link { type_ } => type_.is_nil(),
+            Self::Link { type_ } => arena.get(*type_).is_nil(arena),
             _ => false,
         }
     }
 
-    pub fn is_bool(&self) -> bool {
+    pub fn is_bool(&self, arena: &TypeArena) -> bool {
         match self {
-            Self::Link { type_ } => type_.is_bool(),
+            Self::Link { type_ } => arena.get(*type_).is_bool(arena),
             _ => false,
         }
     }
 
-    pub fn is_int(&self) -> bool {
+    pub fn is_int(&self, arena: &TypeArena) -> bool {
         match self {
-            Self::Link { type_ } => type_.is_int(),
+            Self::Link { type_ } => arena.get(*type_).is_int(arena),
             _ => false,
         }
     }
 
-    pub fn is_float(&self) -> bool {
+    pub fn is_float(&self, arena: &TypeArena) -> bool {
         match self {
-            Self::Link { type_ } => type_.is_float(),
+            Self::Link { type_ } => arena.get(*type_).is_float(arena),
             _ => false,
         }
     }
 
-    pub fn is_string(&self) -> bool {
+    pub fn is_string(&self, arena: &TypeArena) -> bool {
         match self {
-            Self::Link { type_ } => type_.is_string(),
+            Self::Link { type_ } => arena.get(*type_).is_string(arena),
             _ => false,
         }
     }
 
-    pub fn named_type_name(&self) -> Option<(EcoString, EcoString)> {
+    pub fn named_type_name(&self, arena: &TypeArena) -> Option<(EcoString, EcoString)> {
         match self {
-            Self::Link { type_ } => type_.named_type_name(),
+            Self::Link { type_ } => arena.get(*type_).named_type_name(arena),
             _ => None,
         }
     }
@@ -683,8 +716,8 @@ pub struct TypeConstructor {
     pub public: bool,
     pub origin: SrcSpan,
     pub module: EcoString,
-    pub parameters: Vec<Arc<Type>>,
-    pub typ: Arc<Type>,
+    pub parameters: Vec<TypeId>,
+    pub typ: TypeId,
     pub deprecation: Deprecation,
 }
 impl TypeConstructor {
@@ -699,7 +732,7 @@ pub struct ValueConstructor {
     pub public: bool,
     pub deprecation: Deprecation,
     pub variant: ValueConstructorVariant,
-    pub type_: Arc<Type>,
+    pub type_: TypeId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -806,7 +839,7 @@ fn assert_no_labelled_arguments<A>(args: &[CallArg<A>]) -> Result<(), Error> {
 /// could cause naively-implemented type checking to diverge.
 /// While traversing the type tree.
 ///
-fn unify_unbound_type(typ: Arc<Type>, own_id: u64) -> Result<(), UnifyError> {
+fn unify_unbound_type(typ: TypeId, own_id: u64) -> Result<(), UnifyError> {
     if let Type::Var { type_: typ } = typ.deref() {
         let new_value = match typ.borrow().deref() {
             TypeVar::Link { type_: typ, .. } => return unify_unbound_type(typ.clone(), own_id),
@@ -855,10 +888,10 @@ fn unify_unbound_type(typ: Arc<Type>, own_id: u64) -> Result<(), UnifyError> {
 }
 
 fn match_fun_type(
-    typ: Arc<Type>,
+    typ: TypeId,
     arity: usize,
     environment: &mut Environment<'_>,
-) -> Result<(Vec<Arc<Type>>, Arc<Type>), MatchFunTypeError> {
+) -> Result<(Vec<TypeId>, TypeId), MatchFunTypeError> {
     if let Type::Var { type_: typ } = typ.deref() {
         let new_value = match typ.borrow().deref() {
             TypeVar::Link { type_: typ, .. } => {
@@ -896,7 +929,7 @@ fn match_fun_type(
     Err(MatchFunTypeError::NotFn { typ })
 }
 
-pub fn generalise(t: Arc<Type>) -> Arc<Type> {
+pub fn generalise(t: TypeId) -> TypeId {
     match t.deref() {
         Type::Var { type_: typ } => match typ.borrow().deref() {
             TypeVar::Unbound { id } => generic_var(*id),

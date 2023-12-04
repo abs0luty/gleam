@@ -1,7 +1,7 @@
 use super::*;
 use crate::type_::{FieldMap, HasType};
 
-pub type TypedConstant = Constant<Arc<Type>, EcoString>;
+pub type TypedConstant = Constant<TypeId, EcoString>;
 pub type UntypedConstant = Constant<(), ()>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,7 +57,7 @@ pub enum Constant<T, RecordTag> {
 }
 
 impl TypedConstant {
-    pub fn type_(&self) -> Arc<Type> {
+    pub fn type_(&self) -> TypeId {
         match self {
             Constant::Int { .. } => crate::type_::int(),
             Constant::Float { .. } => crate::type_::float(),
@@ -74,7 +74,7 @@ impl TypedConstant {
 }
 
 impl HasType for TypedConstant {
-    fn type_(&self) -> Arc<Type> {
+    fn type_(&self) -> TypeId {
         self.type_()
     }
 }

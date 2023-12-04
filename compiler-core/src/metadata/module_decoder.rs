@@ -12,8 +12,8 @@ use crate::{
     schema_capnp::{self as schema, *},
     type_::{
         self, AccessorsMap, Deprecation, FieldMap, ModuleInterface, RecordAccessor, Type,
-        TypeConstructor, TypeValueConstructor, TypeValueConstructorParameter, ValueConstructor,
-        ValueConstructorVariant,
+        TypeConstructor, TypeId, TypeValueConstructor, TypeValueConstructorParameter,
+        ValueConstructor, ValueConstructorVariant,
     },
     uid::UniqueIdGenerator,
     Result,
@@ -102,7 +102,7 @@ impl ModuleDecoder {
         })
     }
 
-    fn type_(&mut self, reader: &schema::type_::Reader<'_>) -> Result<Arc<Type>> {
+    fn type_(&mut self, reader: &schema::type_::Reader<'_>) -> Result<TypeId> {
         use schema::type_::Which;
         match reader.which()? {
             Which::App(reader) => self.type_app(&reader),
@@ -112,7 +112,7 @@ impl ModuleDecoder {
         }
     }
 
-    fn type_app(&mut self, reader: &schema::type_::app::Reader<'_>) -> Result<Arc<Type>> {
+    fn type_app(&mut self, reader: &schema::type_::app::Reader<'_>) -> Result<TypeId> {
         let module = reader.get_module()?.into();
         let name = reader.get_name()?.into();
         let args = read_vec!(&reader.get_parameters()?, self, type_);
@@ -124,18 +124,18 @@ impl ModuleDecoder {
         }))
     }
 
-    fn type_fn(&mut self, reader: &schema::type_::fn_::Reader<'_>) -> Result<Arc<Type>> {
+    fn type_fn(&mut self, reader: &schema::type_::fn_::Reader<'_>) -> Result<TypeId> {
         let retrn = self.type_(&reader.get_return()?)?;
         let args = read_vec!(&reader.get_arguments()?, self, type_);
         Ok(Arc::new(Type::Fn { args, retrn }))
     }
 
-    fn type_tuple(&mut self, reader: &schema::type_::tuple::Reader<'_>) -> Result<Arc<Type>> {
+    fn type_tuple(&mut self, reader: &schema::type_::tuple::Reader<'_>) -> Result<TypeId> {
         let elems = read_vec!(&reader.get_elements()?, self, type_);
         Ok(Arc::new(Type::Tuple { elems }))
     }
 
-    fn type_var(&mut self, reader: &schema::type_::var::Reader<'_>) -> Result<Arc<Type>> {
+    fn type_var(&mut self, reader: &schema::type_::var::Reader<'_>) -> Result<TypeId> {
         let serialized_id = reader.get_id();
         let id = match self.type_var_id_map.get(&serialized_id) {
             Some(&id) => id,

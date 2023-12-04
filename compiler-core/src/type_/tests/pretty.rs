@@ -6,11 +6,11 @@ use crate::type_::{
     Type,
 };
 
-fn print(type_: Arc<Type>) -> String {
+fn print(type_: TypeId) -> String {
     Printer::new().pretty_print(&type_, 0)
 }
 
-fn custom_bool() -> Arc<Type> {
+fn custom_bool() -> TypeId {
     Arc::new(Type::Named {
         public: true,
         module: "one/two".into(),

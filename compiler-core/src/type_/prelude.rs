@@ -55,7 +55,7 @@ impl PreludeType {
     }
 }
 
-pub fn int() -> Arc<Type> {
+pub fn int() -> TypeId {
     Arc::new(Type::Named {
         public: true,
         name: INT.into(),
@@ -64,7 +64,7 @@ pub fn int() -> Arc<Type> {
     })
 }
 
-pub fn float() -> Arc<Type> {
+pub fn float() -> TypeId {
     Arc::new(Type::Named {
         args: vec![],
         public: true,
@@ -73,7 +73,7 @@ pub fn float() -> Arc<Type> {
     })
 }
 
-pub fn bool() -> Arc<Type> {
+pub fn bool() -> TypeId {
     Arc::new(Type::Named {
         args: vec![],
         public: true,
@@ -82,7 +82,7 @@ pub fn bool() -> Arc<Type> {
     })
 }
 
-pub fn string() -> Arc<Type> {
+pub fn string() -> TypeId {
     Arc::new(Type::Named {
         args: vec![],
         public: true,
@@ -91,7 +91,7 @@ pub fn string() -> Arc<Type> {
     })
 }
 
-pub fn nil() -> Arc<Type> {
+pub fn nil() -> TypeId {
     Arc::new(Type::Named {
         args: vec![],
         public: true,
@@ -100,7 +100,7 @@ pub fn nil() -> Arc<Type> {
     })
 }
 
-pub fn list(t: Arc<Type>) -> Arc<Type> {
+pub fn list(t: TypeId) -> TypeId {
     Arc::new(Type::Named {
         public: true,
         name: LIST.into(),
@@ -109,7 +109,7 @@ pub fn list(t: Arc<Type>) -> Arc<Type> {
     })
 }
 
-pub fn result(a: Arc<Type>, e: Arc<Type>) -> Arc<Type> {
+pub fn result(a: TypeId, e: TypeId) -> TypeId {
     Arc::new(Type::Named {
         public: true,
         name: RESULT.into(),
@@ -118,15 +118,15 @@ pub fn result(a: Arc<Type>, e: Arc<Type>) -> Arc<Type> {
     })
 }
 
-pub fn tuple(elems: Vec<Arc<Type>>) -> Arc<Type> {
+pub fn tuple(elems: Vec<TypeId>) -> TypeId {
     Arc::new(Type::Tuple { elems })
 }
 
-pub fn fn_(args: Vec<Arc<Type>>, retrn: Arc<Type>) -> Arc<Type> {
+pub fn fn_(args: Vec<TypeId>, retrn: TypeId) -> TypeId {
     Arc::new(Type::Fn { retrn, args })
 }
 
-pub fn named(module: &str, name: &str, public: bool, args: Vec<Arc<Type>>) -> Arc<Type> {
+pub fn named(module: &str, name: &str, public: bool, args: Vec<TypeId>) -> TypeId {
     Arc::new(Type::Named {
         public,
         module: module.into(),
@@ -135,7 +135,7 @@ pub fn named(module: &str, name: &str, public: bool, args: Vec<Arc<Type>>) -> Ar
     })
 }
 
-pub fn bits() -> Arc<Type> {
+pub fn bits() -> TypeId {
     Arc::new(Type::Named {
         args: vec![],
         public: true,
@@ -144,7 +144,7 @@ pub fn bits() -> Arc<Type> {
     })
 }
 
-pub fn utf_codepoint() -> Arc<Type> {
+pub fn utf_codepoint() -> TypeId {
     Arc::new(Type::Named {
         args: vec![],
         public: true,
@@ -153,20 +153,20 @@ pub fn utf_codepoint() -> Arc<Type> {
     })
 }
 
-pub fn generic_var(id: u64) -> Arc<Type> {
+pub fn generic_var(id: u64) -> TypeId {
     Arc::new(Type::Var {
         type_: Arc::new(RefCell::new(TypeVar::Generic { id })),
     })
 }
 
-pub fn unbound_var(id: u64) -> Arc<Type> {
+pub fn unbound_var(id: u64) -> TypeId {
     Arc::new(Type::Var {
         type_: Arc::new(RefCell::new(TypeVar::Unbound { id })),
     })
 }
 
 #[cfg(test)]
-pub fn link(type_: Arc<Type>) -> Arc<Type> {
+pub fn link(type_: TypeId) -> TypeId {
     Arc::new(Type::Var {
         type_: Arc::new(RefCell::new(TypeVar::Link { type_ })),
     })

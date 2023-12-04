@@ -2,8 +2,6 @@ use super::*;
 use crate::ast::{
     Layer, TypeAst, TypeAstConstructor, TypeAstFn, TypeAstHole, TypeAstTuple, TypeAstVar,
 };
-use std::sync::Arc;
-
 use im::hashmap;
 
 /// The Hydrator takes an AST representing a type (i.e. a type annotation
@@ -20,7 +18,7 @@ use im::hashmap;
 ///
 #[derive(Debug)]
 pub struct Hydrator {
-    created_type_variables: im::HashMap<EcoString, Arc<Type>>,
+    created_type_variables: im::HashMap<EcoString, TypeId>,
     /// A rigid type is a generic type that was specified as being generic in
     /// an annotation. As such it should never be instantiated into an unbound
     /// variable. This type_id => name map is used for reporting the original
@@ -32,7 +30,7 @@ pub struct Hydrator {
 
 #[derive(Debug)]
 pub struct ScopeResetData {
-    created_type_variables: im::HashMap<EcoString, Arc<Type>>,
+    created_type_variables: im::HashMap<EcoString, TypeId>,
     rigid_type_names: im::HashMap<u64, EcoString>,
 }
 
@@ -89,7 +87,7 @@ impl Hydrator {
         &mut self,
         ast: &Option<TypeAst>,
         environment: &mut Environment<'_>,
-    ) -> Result<Arc<Type>, Error> {
+    ) -> Result<TypeId, Error> {
         match ast {
             Some(ast) => self.type_from_ast(ast, environment),
             None => Ok(environment.new_unbound_var()),
@@ -102,7 +100,7 @@ impl Hydrator {
         &mut self,
         ast: &TypeAst,
         environment: &mut Environment<'_>,
-    ) -> Result<Arc<Type>, Error> {
+    ) -> Result<TypeId, Error> {
         match ast {
             TypeAst::Constructor(TypeAstConstructor {
                 location,

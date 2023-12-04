@@ -13,9 +13,8 @@ pub use self::constant::{Constant, TypedConstant, UntypedConstant};
 use crate::analyse::Inferred;
 use crate::build::{Located, Target};
 use crate::type_::{
-    self, Deprecation, ModuleValueConstructor, PatternConstructor, Type, ValueConstructor,
+    self, Deprecation, ModuleValueConstructor, PatternConstructor, ValueConstructor, TypeId,
 };
-use std::sync::Arc;
 
 use ecow::EcoString;
 #[cfg(test)]
@@ -127,7 +126,7 @@ fn module_dependencies_test() {
     );
 }
 
-pub type TypedArg = Arg<Arc<Type>>;
+pub type TypedArg = Arg<TypeId>;
 pub type UntypedArg = Arg<()>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -188,7 +187,7 @@ impl ArgNames {
     }
 }
 
-pub type TypedRecordConstructor = RecordConstructor<Arc<Type>>;
+pub type TypedRecordConstructor = RecordConstructor<TypeId>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordConstructor<T> {
@@ -204,7 +203,7 @@ impl<A> RecordConstructor<A> {
     }
 }
 
-pub type TypedRecordConstructorArg = RecordConstructorArg<Arc<Type>>;
+pub type TypedRecordConstructorArg = RecordConstructorArg<TypeId>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordConstructorArg<T> {
@@ -374,7 +373,7 @@ pub struct Function<T, Expr> {
     pub external_javascript: Option<(EcoString, EcoString)>,
 }
 
-pub type TypedFunction = Function<Arc<Type>, TypedExpr>;
+pub type TypedFunction = Function<TypeId, TypedExpr>;
 pub type UntypedFunction = Function<(), UntypedExpr>;
 
 impl<T, E> Function<T, E> {
@@ -506,7 +505,7 @@ pub struct TypeAlias<T> {
     pub deprecation: Deprecation,
 }
 
-pub type TypedDefinition = Definition<Arc<Type>, TypedExpr, EcoString, EcoString>;
+pub type TypedDefinition = Definition<TypeId, TypedExpr, EcoString, EcoString>;
 pub type UntypedDefinition = Definition<(), UntypedExpr, (), ()>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -813,9 +812,9 @@ impl TypedRecordUpdateArg {
 pub type MultiPattern<Type> = Vec<Pattern<Type>>;
 
 pub type UntypedMultiPattern = MultiPattern<()>;
-pub type TypedMultiPattern = MultiPattern<Arc<Type>>;
+pub type TypedMultiPattern = MultiPattern<TypeId>;
 
-pub type TypedClause = Clause<TypedExpr, Arc<Type>, EcoString>;
+pub type TypedClause = Clause<TypedExpr, TypeId, EcoString>;
 
 pub type UntypedClause = Clause<UntypedExpr, (), ()>;
 
@@ -855,7 +854,7 @@ impl TypedClause {
 }
 
 pub type UntypedClauseGuard = ClauseGuard<(), ()>;
-pub type TypedClauseGuard = ClauseGuard<Arc<Type>, EcoString>;
+pub type TypedClauseGuard = ClauseGuard<TypeId, EcoString>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClauseGuard<Type, RecordTag> {
@@ -1021,7 +1020,7 @@ impl<A, B> ClauseGuard<A, B> {
 }
 
 impl TypedClauseGuard {
-    pub fn type_(&self) -> Arc<Type> {
+    pub fn type_(&self) -> TypeId {
         match self {
             ClauseGuard::Var { type_, .. } => type_.clone(),
             ClauseGuard::TupleIndex { type_, .. } => type_.clone(),
@@ -1069,7 +1068,7 @@ pub struct DefinitionLocation<'module> {
 }
 
 pub type UntypedPattern = Pattern<()>;
-pub type TypedPattern = Pattern<Arc<Type>>;
+pub type TypedPattern = Pattern<TypeId>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pattern<Type> {
@@ -1259,7 +1258,7 @@ impl TypedPattern {
         }
     }
 
-    pub fn type_(&self) -> Arc<Type> {
+    pub fn type_(&self) -> TypeId {
         match self {
             Pattern::Int { .. } => type_::int(),
             Pattern::Float { .. } => type_::float(),
@@ -1335,13 +1334,13 @@ impl AssignmentKind {
 // BitArrays
 
 pub type UntypedExprBitArraySegment = BitArraySegment<UntypedExpr, ()>;
-pub type TypedExprBitArraySegment = BitArraySegment<TypedExpr, Arc<Type>>;
+pub type TypedExprBitArraySegment = BitArraySegment<TypedExpr, TypeId>;
 
 pub type UntypedConstantBitArraySegment = BitArraySegment<UntypedConstant, ()>;
-pub type TypedConstantBitArraySegment = BitArraySegment<TypedConstant, Arc<Type>>;
+pub type TypedConstantBitArraySegment = BitArraySegment<TypedConstant, TypeId>;
 
 pub type UntypedPatternBitArraySegment = BitArraySegment<UntypedPattern, ()>;
-pub type TypedPatternBitArraySegment = BitArraySegment<TypedPattern, Arc<Type>>;
+pub type TypedPatternBitArraySegment = BitArraySegment<TypedPattern, TypeId>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BitArraySegment<Value, Type> {
@@ -1582,7 +1581,7 @@ pub enum Statement<TypeT, ExpressionT> {
     Use(Use),
 }
 
-pub type TypedStatement = Statement<Arc<Type>, TypedExpr>;
+pub type TypedStatement = Statement<TypeId, TypedExpr>;
 pub type UntypedStatement = Statement<(), UntypedExpr>;
 
 impl<T, E> Statement<T, E> {
@@ -1636,7 +1635,7 @@ impl TypedStatement {
         }
     }
 
-    pub fn type_(&self) -> Arc<Type> {
+    pub fn type_(&self) -> TypeId {
         match self {
             Statement::Expression(expression) => expression.type_(),
             Statement::Assignment(assignment) => assignment.type_(),
@@ -1684,7 +1683,7 @@ pub struct Assignment<TypeT, ExpressionT> {
     pub annotation: Option<TypeAst>,
 }
 
-pub type TypedAssignment = Assignment<Arc<Type>, TypedExpr>;
+pub type TypedAssignment = Assignment<TypeId, TypedExpr>;
 pub type UntypedAssignment = Assignment<(), UntypedExpr>;
 
 impl TypedAssignment {
@@ -1694,7 +1693,7 @@ impl TypedAssignment {
             .or_else(|| self.value.find_node(byte_index))
     }
 
-    pub fn type_(&self) -> Arc<Type> {
+    pub fn type_(&self) -> TypeId {
         self.value.type_()
     }
 }

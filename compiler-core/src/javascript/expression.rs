@@ -8,9 +8,8 @@ use crate::{
     ast::*,
     line_numbers::LineNumbers,
     pretty::*,
-    type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant},
+    type_::{ModuleValueConstructor, TypeArena, TypeId, ValueConstructor, ValueConstructorVariant},
 };
-use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Position {
@@ -29,7 +28,8 @@ impl Position {
 }
 
 #[derive(Debug)]
-pub(crate) struct Generator<'module> {
+pub(crate) struct Generator<'ta, 'module> {
+    type_arena: &'ta TypeArena,
     module_name: EcoString,
     line_numbers: &'module LineNumbers,
     function_name: Option<EcoString>,
@@ -46,9 +46,10 @@ pub(crate) struct Generator<'module> {
     pub tail_recursion_used: bool,
 }
 
-impl<'module> Generator<'module> {
+impl<'ta, 'module> Generator<'ta, 'module> {
     #[allow(clippy::too_many_arguments)] // TODO: FIXME
     pub fn new(
+        type_arena: &'ta TypeArena,
         module_name: EcoString,
         line_numbers: &'module LineNumbers,
         function_name: EcoString,
@@ -68,6 +69,7 @@ impl<'module> Generator<'module> {
             }
         }
         Self {
+            type_arena,
             tracker,
             module_name,
             line_numbers,
@@ -384,23 +386,23 @@ impl<'module> Generator<'module> {
 
     fn record_constructor<'a>(
         &mut self,
-        type_: Arc<Type>,
+        type_: TypeId,
         qualifier: Option<&'a str>,
         name: &'a str,
         arity: u16,
     ) -> Document<'a> {
-        if qualifier.is_none() && type_.is_result_constructor() {
+        if qualifier.is_none() && type_.is_result_constructor(self.type_arena) {
             if name == "Ok" {
                 self.tracker.ok_used = true;
             } else if name == "Error" {
                 self.tracker.error_used = true;
             }
         }
-        if type_.is_bool() && name == "True" {
+        if type_.is_bool(self.type_arena) && name == "True" {
             "true".to_doc()
-        } else if type_.is_bool() {
+        } else if type_.is_bool(self.type_arena) {
             "false".to_doc()
-        } else if type_.is_nil() {
+        } else if type_.is_nil(self.type_arena) {
             "undefined".to_doc()
         } else if arity == 0 {
             match qualifier {
@@ -1300,7 +1302,7 @@ pub(crate) fn constant_expression<'a>(
 
 fn bit_array<'a>(
     tracker: &mut UsageTracker,
-    segments: &'a [BitArraySegment<TypedConstant, Arc<Type>>],
+    segments: &'a [BitArraySegment<TypedConstant, TypeId>],
 ) -> Result<Document<'a>, Error> {
     tracker.bit_array_literal_used = true;
 
@@ -1488,7 +1490,7 @@ impl BinOp {
     }
 }
 
-pub fn is_js_scalar(t: Arc<Type>) -> bool {
+pub fn is_js_scalar(t: TypeId) -> bool {
     t.is_int() || t.is_float() || t.is_bool() || t.is_nil() || t.is_string()
 }
 

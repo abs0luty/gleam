@@ -21,8 +21,8 @@ use crate::{
         hydrator::Hydrator,
         prelude::*,
         AccessorsMap, Deprecation, ModuleInterface, PatternConstructor, RecordAccessor, Type,
-        TypeConstructor, TypeValueConstructor, TypeValueConstructorParameter, ValueConstructor,
-        ValueConstructorVariant,
+        TypeArena, TypeConstructor, TypeValueConstructor, TypeValueConstructorParameter,
+        ValueConstructor, ValueConstructorVariant, TypeId,
     },
     uid::UniqueIdGenerator,
     warning::TypeWarningEmitter,
@@ -90,10 +90,18 @@ pub fn infer_module<A>(
     modules: &im::HashMap<EcoString, ModuleInterface>,
     warnings: &TypeWarningEmitter,
     direct_dependencies: &HashMap<EcoString, A>,
+    type_arena: &TypeArena,
 ) -> Result<TypedModule, Error> {
     let name = module.name.clone();
     let documentation = std::mem::take(&mut module.documentation);
-    let env = Environment::new(ids.clone(), name.clone(), target, modules, warnings);
+    let env = Environment::new(
+        ids.clone(),
+        name.clone(),
+        target,
+        modules,
+        warnings,
+        type_arena,
+    );
     validate_module_name(&name)?;
 
     let mut type_names = HashMap::with_capacity(module.definitions.len());
@@ -200,7 +208,7 @@ pub fn infer_module<A>(
         if !value.public {
             continue;
         }
-        if let Some(leaked) = value.type_.find_private_type() {
+        if let Some(leaked) = value.type_.find_private_type(type_arena) {
             return Err(Error::PrivateTypeLeak {
                 location: value.variant.definition_location(),
                 leaked,
@@ -949,7 +957,7 @@ pub fn infer_bit_array_option<UntypedValue, TypedValue, Typer>(
     mut type_check: Typer,
 ) -> Result<BitArrayOption<TypedValue>, Error>
 where
-    Typer: FnMut(UntypedValue, Arc<Type>) -> Result<TypedValue, Error>,
+    Typer: FnMut(UntypedValue, TypeId) -> Result<TypedValue, Error>,
 {
     match segment_option {
         BitArrayOption::Size {
@@ -1010,7 +1018,7 @@ fn generalise_statement(
 }
 
 fn generalise_function(
-    function: Function<Arc<Type>, ast::TypedExpr>,
+    function: Function<TypeId, ast::TypedExpr>,
     environment: &mut Environment<'_>,
     module_name: &EcoString,
 ) -> TypedDefinition {
@@ -1089,7 +1097,7 @@ fn make_type_vars(
     location: &SrcSpan,
     hydrator: &mut Hydrator,
     environment: &mut Environment<'_>,
-) -> Result<Vec<Arc<Type>>, Error> {
+) -> Result<Vec<TypeId>, Error> {
     args.iter()
         .map(|arg| {
             TypeAst::Var(TypeAstVar {

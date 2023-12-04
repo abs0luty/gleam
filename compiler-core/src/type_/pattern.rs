@@ -9,7 +9,6 @@ use crate::{
     analyse::Inferred,
     ast::{AssignName, Layer, UntypedPatternBitArraySegment},
 };
-use std::sync::Arc;
 
 pub struct PatternTyper<'a, 'b> {
     environment: &'a mut Environment<'b>,
@@ -36,7 +35,7 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
     fn insert_variable(
         &mut self,
         name: &str,
-        typ: Arc<Type>,
+        typ: TypeId,
         location: SrcSpan,
     ) -> Result<(), UnifyError> {
         match &mut self.mode {
@@ -78,7 +77,7 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
     fn insert_constant(
         &mut self,
         name: &str,
-        literal: Constant<Arc<Type>, EcoString>,
+        literal: Constant<TypeId, EcoString>,
         location: SrcSpan,
     ) -> Result<(), UnifyError> {
         match &mut self.mode {
@@ -119,7 +118,7 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
     pub fn infer_alternative_multi_pattern(
         &mut self,
         multi_pattern: UntypedMultiPattern,
-        subjects: &[Arc<Type>],
+        subjects: &[TypeId],
         location: &SrcSpan,
     ) -> Result<Vec<TypedPattern>, Error> {
         self.mode = PatternMode::Alternative(vec![]);
@@ -150,7 +149,7 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
     pub fn infer_multi_pattern(
         &mut self,
         multi_pattern: UntypedMultiPattern,
-        subjects: &[Arc<Type>],
+        subjects: &[TypeId],
         location: &SrcSpan,
     ) -> Result<Vec<TypedPattern>, Error> {
         // If there are N subjects the multi-pattern is expected to be N patterns
@@ -242,11 +241,7 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
     /// inferred type of the subject in order to determine what variables to insert
     /// into the environment (or to detect a type error).
     ///
-    pub fn unify(
-        &mut self,
-        pattern: UntypedPattern,
-        type_: Arc<Type>,
-    ) -> Result<TypedPattern, Error> {
+    pub fn unify(&mut self, pattern: UntypedPattern, type_: TypeId) -> Result<TypedPattern, Error> {
         match pattern {
             Pattern::Discard { name, location, .. } => Ok(Pattern::Discard {
                 type_,
@@ -363,7 +358,14 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                 elements,
                 tail,
                 ..
-            } => match type_.get_app_args(true, PRELUDE_MODULE_NAME, "List", 1, self.environment) {
+            } => match type_.get_app_args(
+                true,
+                PRELUDE_MODULE_NAME,
+                "List",
+                1,
+                self.environment,
+                self.type_arena,
+            ) {
                 Some(args) => {
                     let type_ = args
                         .get(0)
@@ -397,53 +399,55 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                 }),
             },
 
-            Pattern::Tuple { elems, location } => match collapse_links(type_.clone()).deref() {
-                Type::Tuple { elems: type_elems } => {
-                    if elems.len() != type_elems.len() {
-                        return Err(Error::IncorrectArity {
-                            labels: vec![],
-                            location,
-                            expected: type_elems.len(),
-                            given: elems.len(),
-                        });
+            Pattern::Tuple { elems, location } => {
+                match collapse_links(type_.clone(), self.type_arena).deref() {
+                    Type::Tuple { elems: type_elems } => {
+                        if elems.len() != type_elems.len() {
+                            return Err(Error::IncorrectArity {
+                                labels: vec![],
+                                location,
+                                expected: type_elems.len(),
+                                given: elems.len(),
+                            });
+                        }
+
+                        let elems = elems
+                            .into_iter()
+                            .zip(type_elems)
+                            .map(|(pattern, typ)| self.unify(pattern, typ.clone()))
+                            .try_collect()?;
+                        Ok(Pattern::Tuple { elems, location })
                     }
 
-                    let elems = elems
-                        .into_iter()
-                        .zip(type_elems)
-                        .map(|(pattern, typ)| self.unify(pattern, typ.clone()))
-                        .try_collect()?;
-                    Ok(Pattern::Tuple { elems, location })
-                }
+                    Type::Var { .. } => {
+                        let elems_types: Vec<_> = (0..(elems.len()))
+                            .map(|_| self.environment.new_unbound_var())
+                            .collect();
+                        unify(tuple(elems_types.clone()), type_)
+                            .map_err(|e| convert_unify_error(e, location))?;
+                        let elems = elems
+                            .into_iter()
+                            .zip(elems_types)
+                            .map(|(pattern, type_)| self.unify(pattern, type_))
+                            .try_collect()?;
+                        Ok(Pattern::Tuple { elems, location })
+                    }
 
-                Type::Var { .. } => {
-                    let elems_types: Vec<_> = (0..(elems.len()))
-                        .map(|_| self.environment.new_unbound_var())
-                        .collect();
-                    unify(tuple(elems_types.clone()), type_)
-                        .map_err(|e| convert_unify_error(e, location))?;
-                    let elems = elems
-                        .into_iter()
-                        .zip(elems_types)
-                        .map(|(pattern, type_)| self.unify(pattern, type_))
-                        .try_collect()?;
-                    Ok(Pattern::Tuple { elems, location })
-                }
+                    _ => {
+                        let elems_types = (0..(elems.len()))
+                            .map(|_| self.environment.new_unbound_var())
+                            .collect();
 
-                _ => {
-                    let elems_types = (0..(elems.len()))
-                        .map(|_| self.environment.new_unbound_var())
-                        .collect();
-
-                    Err(Error::CouldNotUnify {
-                        given: tuple(elems_types),
-                        expected: type_,
-                        situation: None,
-                        location,
-                        rigid_type_names: hashmap![],
-                    })
+                        Err(Error::CouldNotUnify {
+                            given: tuple(elems_types),
+                            expected: type_,
+                            situation: None,
+                            location,
+                            rigid_type_names: hashmap![],
+                        })
+                    }
                 }
-            },
+            }
 
             Pattern::BitArray { location, segments } => {
                 unify(type_, bits()).map_err(|e| convert_unify_error(e, location))?;
