@@ -118,7 +118,7 @@ impl Hydrator {
                 // Look up the constructor
                 let TypeConstructor {
                     parameters,
-                    typ: return_type,
+                    type_id: return_type,
                     deprecation,
                     ..
                 } = environment

@@ -5,11 +5,11 @@ use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
 
 /// Returns a list of patterns not covered by the match expression.
-pub fn missing_patterns(matches: &Match, environment: &Environment<'_>, type_arena: &TypeArena) -> Vec<EcoString> {
+pub fn missing_patterns(matches: &Match, environment: &Environment<'_>) -> Vec<EcoString> {
     let mut names = HashSet::new();
     let mut steps = Vec::new();
 
-    add_missing_patterns(&matches.tree, &mut steps, &mut names, environment, type_arena);
+    add_missing_patterns(&matches.tree, &mut steps, &mut names, environment);
 
     let mut missing: Vec<EcoString> = names.into_iter().collect();
 
@@ -124,7 +124,6 @@ fn add_missing_patterns(
     terms: &mut Vec<Term>,
     missing: &mut HashSet<EcoString>,
     environment: &Environment<'_>,
-    type_arena: &TypeArena,
 ) {
     match node {
         Decision::Success(_) => {}
@@ -158,7 +157,7 @@ fn add_missing_patterns(
         }
 
         Decision::Guard(_, _, fallback) => {
-            add_missing_patterns(fallback, terms, missing, environment, type_arena);
+            add_missing_patterns(fallback, terms, missing, environment);
         }
 
         Decision::Switch(variable, cases, fallback) => {
@@ -183,9 +182,14 @@ fn add_missing_patterns(
                         });
                     }
 
-                    Constructor::Variant { type_, index } => {
-                        let (module, name) = type_
-                            .named_type_name(type_arena)
+                    Constructor::Variant {
+                        type_id: type_,
+                        index,
+                    } => {
+                        let (module, name) = environment
+                            .type_arena
+                            .resolve(type_id)
+                            .named_type_name(environment.type_arena)
                             .expect("Should be a named type");
                         let name = environment
                             .get_constructors_for_type(&module, &name)
@@ -202,12 +206,12 @@ fn add_missing_patterns(
                     }
                 }
 
-                add_missing_patterns(&case.body, terms, missing, environment, type_arena);
+                add_missing_patterns(&case.body, terms, missing, environment);
                 _ = terms.pop();
             }
 
             if let Some(node) = fallback {
-                add_missing_patterns(node, terms, missing, environment, type_arena);
+                add_missing_patterns(node, terms, missing, environment);
             }
         }
 
@@ -219,7 +223,7 @@ fn add_missing_patterns(
             terms.push(Term::EmptyList {
                 variable: variable.clone(),
             });
-            add_missing_patterns(empty, terms, missing, environment, type_arena);
+            add_missing_patterns(empty, terms, missing, environment);
             _ = terms.pop();
 
             terms.push(Term::List {
@@ -227,7 +231,7 @@ fn add_missing_patterns(
                 first: non_empty.first.clone(),
                 rest: non_empty.rest.clone(),
             });
-            add_missing_patterns(&non_empty.decision, terms, missing, environment, type_arena);
+            add_missing_patterns(&non_empty.decision, terms, missing, environment);
             _ = terms.pop();
         }
     }

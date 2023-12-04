@@ -63,7 +63,7 @@ pub enum Constructor {
     Float(EcoString),
     Tuple(Vec<TypeId>),
     String(EcoString),
-    Variant { type_: TypeId, index: u16 },
+    Variant { type_id: TypeId, index: u16 },
     // TODO: Generate a decision tree for this
     BitArray,
     // TODO: Generate a decision tree for this
@@ -155,7 +155,7 @@ impl PatternArena {
                 ..
             } => {
                 let constructor = Constructor::Variant {
-                    type_: type_.clone(),
+                    type_id: type_.clone(),
                     index: constructor.expect_ref("must be inferred").constructor_index,
                 };
                 let arguments = arguments

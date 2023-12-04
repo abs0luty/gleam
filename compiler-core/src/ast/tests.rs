@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::build::Target;
-use crate::type_::{Deprecation, PRELUDE_MODULE_NAME};
+use crate::type_::{Deprecation, TypeArena, PRELUDE_MODULE_NAME};
 use crate::{
     ast::{SrcSpan, TypedExpr},
     build::Located,
@@ -26,6 +26,7 @@ fn compile_module(src: &str) -> TypedModule {
     // to have one place where we create all this required state for use in each
     // place.
     let _ = modules.insert(PRELUDE_MODULE_NAME.into(), build_prelude(&ids));
+    let mut type_arena = TypeArena::new();
     crate::analyse::infer_module::<()>(
         Target::Erlang,
         &ids,
@@ -35,6 +36,7 @@ fn compile_module(src: &str) -> TypedModule {
         &modules,
         &TypeWarningEmitter::null(),
         &std::collections::HashMap::new(),
+        &mut type_arena,
     )
     .expect("should successfully infer")
 }
@@ -59,10 +61,18 @@ fn compile_expression(src: &str) -> TypedStatement {
     // place.
     let _ = modules.insert(PRELUDE_MODULE_NAME.into(), type_::build_prelude(&ids));
     let emitter = TypeWarningEmitter::null();
-    let mut environment = Environment::new(ids, "mymod".into(), Target::Erlang, &modules, &emitter);
+    let mut type_arena = TypeArena::new();
+    let mut environment = Environment::new(
+        ids,
+        "mymod".into(),
+        Target::Erlang,
+        &modules,
+        &emitter,
+        &mut type_arena,
+    );
 
     // Insert a cat record to use in the tests
-    let cat_type = Arc::new(Type::Named {
+    let cat_type = type_arena.alloc(Type::Named {
         public: true,
         module: "mymod".into(),
         name: "Cat".into(),
@@ -188,7 +198,7 @@ wibble}"#,
             variant: ValueConstructorVariant::LocalVariable {
                 location: SrcSpan { start: 5, end: 11 },
             },
-            type_: type_::int(),
+            type_id: type_::int(),
         },
         name: "wibble".into(),
     };
@@ -480,7 +490,7 @@ fn find_node_bool() {
                 module: PRELUDE_MODULE_NAME.into(),
                 constructor_index: 0,
             },
-            type_: type_::bool(),
+            type_id: type_::bool(),
         },
         name: "True".into(),
     };

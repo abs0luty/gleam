@@ -9,8 +9,8 @@ use crate::{
     },
     build::Origin,
     type_::{
-        self, Deprecation, ModuleInterface, TypeConstructor, TypeValueConstructor,
-        ValueConstructor, ValueConstructorVariant, TypeId,
+        self, Deprecation, ModuleInterface, TypeConstructor, TypeId, TypeValueConstructor,
+        ValueConstructor, ValueConstructorVariant,
     },
     uid::UniqueIdGenerator,
 };
@@ -40,7 +40,7 @@ fn constant_module(constant: TypedConstant) -> ModuleInterface {
             ValueConstructor {
                 public: true,
                 deprecation: Deprecation::NotDeprecated,
-                type_: type_::int(),
+                type_id: type_::int(),
                 variant: ValueConstructorVariant::ModuleConstant {
                     documentation: Some("Some documentation".into()),
                     literal: constant,
@@ -95,7 +95,7 @@ fn module_with_private_type() {
         types: [(
             "ListIntType".into(),
             TypeConstructor {
-                typ: type_::list(type_::int()),
+                type_id: type_::list(type_::int()),
                 public: false,
                 origin: Default::default(),
                 module: "the/module".into(),
@@ -141,7 +141,7 @@ fn module_with_app_type() {
         types: [(
             "ListIntType".into(),
             TypeConstructor {
-                typ: type_::list(type_::int()),
+                type_id: type_::list(type_::int()),
                 public: true,
                 origin: Default::default(),
                 module: "the/module".into(),
@@ -168,7 +168,7 @@ fn module_with_fn_type() {
         types: [(
             "FnType".into(),
             TypeConstructor {
-                typ: type_::fn_(vec![type_::nil(), type_::float()], type_::int()),
+                type_id: type_::fn_(vec![type_::nil(), type_::float()], type_::int()),
                 public: true,
                 origin: Default::default(),
                 module: "the/module".into(),
@@ -195,7 +195,7 @@ fn module_with_tuple_type() {
         types: [(
             "TupleType".into(),
             TypeConstructor {
-                typ: type_::tuple(vec![type_::nil(), type_::float(), type_::int()]),
+                type_id: type_::tuple(vec![type_::nil(), type_::float(), type_::int()]),
                 public: true,
                 origin: Default::default(),
                 module: "the/module".into(),
@@ -228,7 +228,7 @@ fn module_with_generic_type() {
             types: [(
                 "TupleType".into(),
                 TypeConstructor {
-                    typ: type_::tuple(vec![t1.clone(), t1.clone(), t2.clone()]),
+                    type_id: type_::tuple(vec![t1.clone(), t1.clone(), t2.clone()]),
                     public: true,
                     origin: Default::default(),
                     module: "the/module".into(),
@@ -261,7 +261,7 @@ fn module_with_type_links() {
             types: [(
                 "SomeType".into(),
                 TypeConstructor {
-                    typ: type_,
+                    type_id: type_,
                     public: true,
                     origin: Default::default(),
                     module: "a".into(),
@@ -320,7 +320,7 @@ fn module_fn_value() {
             ValueConstructor {
                 public: true,
                 deprecation: Deprecation::NotDeprecated,
-                type_: type_::int(),
+                type_id: type_::int(),
                 variant: ValueConstructorVariant::ModuleFn {
                     documentation: Some("wobble!".into()),
                     name: "one".into(),
@@ -357,7 +357,7 @@ fn deprecated_module_fn_value() {
                 deprecation: Deprecation::Deprecated {
                     message: "wibble wobble".into(),
                 },
-                type_: type_::int(),
+                type_id: type_::int(),
                 variant: ValueConstructorVariant::ModuleFn {
                     documentation: Some("wobble!".into()),
                     name: "one".into(),
@@ -392,7 +392,7 @@ fn private_module_fn_value() {
             ValueConstructor {
                 public: false,
                 deprecation: Deprecation::NotDeprecated,
-                type_: type_::int(),
+                type_id: type_::int(),
                 variant: ValueConstructorVariant::ModuleFn {
                     documentation: Some("wobble!".into()),
                     name: "one".into(),
@@ -429,7 +429,7 @@ fn module_fn_value_regression() {
             ValueConstructor {
                 public: true,
                 deprecation: Deprecation::NotDeprecated,
-                type_: type_::int(),
+                type_id: type_::int(),
                 variant: ValueConstructorVariant::ModuleFn {
                     documentation: Some("wabble!".into()),
                     name: "one".into(),
@@ -465,7 +465,7 @@ fn module_fn_value_with_field_map() {
             ValueConstructor {
                 public: true,
                 deprecation: Deprecation::NotDeprecated,
-                type_: type_::int(),
+                type_id: type_::int(),
                 variant: ValueConstructorVariant::ModuleFn {
                     documentation: Some("wubble!".into()),
                     name: "one".into(),
@@ -503,7 +503,7 @@ fn record_value() {
             ValueConstructor {
                 public: true,
                 deprecation: Deprecation::NotDeprecated,
-                type_: type_::int(),
+                type_id: type_::int(),
                 variant: ValueConstructorVariant::Record {
                     documentation: Some("webble!".into()),
                     name: "one".into(),
@@ -543,7 +543,7 @@ fn record_value_with_field_map() {
             ValueConstructor {
                 public: true,
                 deprecation: Deprecation::NotDeprecated,
-                type_: type_::int(),
+                type_id: type_::int(),
                 variant: ValueConstructorVariant::Record {
                     documentation: Some("wybble!".into()),
                     module: "themodule".into(),
@@ -764,7 +764,7 @@ fn constant_var() {
         constructor: Some(Box::from(ValueConstructor {
             public: true,
             deprecation: Deprecation::NotDeprecated,
-            type_: type_::int(),
+            type_id: type_::int(),
             variant: ValueConstructorVariant::ModuleConstant {
                 documentation: Some("some doc".into()),
                 literal: one_original.clone(),
@@ -789,7 +789,7 @@ fn constant_var() {
                 ValueConstructor {
                     public: true,
                     deprecation: Deprecation::NotDeprecated,
-                    type_: type_::int(),
+                    type_id: type_::int(),
                     variant: ValueConstructorVariant::ModuleConstant {
                         documentation: Some("some doc!!!!!!!!!".into()),
                         literal: one,
@@ -803,7 +803,7 @@ fn constant_var() {
                 ValueConstructor {
                     public: true,
                     deprecation: Deprecation::NotDeprecated,
-                    type_: type_::int(),
+                    type_id: type_::int(),
                     variant: ValueConstructorVariant::ModuleConstant {
                         documentation: Some("some doc yeah".into()),
                         literal: one_original,
@@ -985,7 +985,7 @@ fn deprecated_type() {
         types: [(
             "ListIntType".into(),
             TypeConstructor {
-                typ: type_::list(type_::int()),
+                type_id: type_::list(type_::int()),
                 public: true,
                 origin: Default::default(),
                 module: "the/module".into(),

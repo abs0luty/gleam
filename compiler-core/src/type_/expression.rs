@@ -999,7 +999,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 Ok(ClauseGuard::Var {
                     location,
                     name,
-                    type_: constructor.type_,
+                    type_: constructor.type_id,
                 })
             }
 
@@ -1413,7 +1413,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             (module.name.clone(), constructor.clone())
         };
 
-        let type_ = self.instantiate(constructor.type_, &mut hashmap![]);
+        let type_ = self.instantiate(constructor.type_id, &mut hashmap![]);
 
         let constructor = match &constructor.variant {
             variant @ ValueConstructorVariant::ModuleFn { name, module, .. } => {
@@ -1490,23 +1490,30 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             label: label.clone(),
             fields,
         };
-        let accessors =
-            match collapse_links(record_type.clone(), self.environment.type_arena).as_ref() {
-                // A type in the current module which may have fields
-                Type::Named { module, name, .. } if module == &self.environment.current_module => {
-                    self.environment.accessors.get(name)
-                }
 
-                // A type in another module which may have fields
-                Type::Named { module, name, .. } => self
-                    .environment
-                    .importable_modules
-                    .get(module)
-                    .and_then(|module| module.accessors.get(name)),
+        let type_with_collapsed_links =
+            collapse_links(record_type.clone(), self.environment.type_arena);
 
-                _something_without_fields => return Err(unknown_field(vec![])),
+        let accessors = match self
+            .environment
+            .type_arena
+            .resolve(type_with_collapsed_links)
+        {
+            // A type in the current module which may have fields
+            Type::Named { module, name, .. } if module == &self.environment.current_module => {
+                self.environment.accessors.get(name)
             }
-            .ok_or_else(|| unknown_field(vec![]))?;
+
+            // A type in another module which may have fields
+            Type::Named { module, name, .. } => self
+                .environment
+                .importable_modules
+                .get(module)
+                .and_then(|module| module.accessors.get(name)),
+
+            _something_without_fields => return Err(unknown_field(vec![])),
+        }
+        .ok_or_else(|| unknown_field(vec![]))?;
         let RecordAccessor {
             index,
             label,
@@ -1578,7 +1585,11 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         }
 
         // The type must be a function for it to be a record constructor
-        let retrn = match value_constructor.type_.as_ref() {
+        let retrn = match self
+            .environment
+            .type_arena
+            .resolve(value_constructor.type_id)
+        {
             Type::Fn { retrn, .. } => retrn,
             _ => {
                 return Err(Error::RecordUpdateInvalidConstructor {
@@ -1709,7 +1720,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
         let ValueConstructor {
             public,
             variant,
-            type_: typ,
+            type_id: typ,
             deprecation,
         } = constructor;
 
@@ -1728,7 +1739,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             public,
             deprecation,
             variant,
-            type_: typ,
+            type_id: typ,
         })
     }
 
@@ -1803,7 +1814,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                     location,
                     name,
                     args: vec![],
-                    typ: constructor.type_,
+                    typ: constructor.type_id,
                     tag,
                     field_map,
                 })
@@ -1849,7 +1860,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 // have to convert to this other data structure.
                 let fun = match &module {
                     Some(module_alias) => {
-                        let typ = Arc::clone(&constructor.type_);
+                        let typ = Arc::clone(&constructor.type_id);
                         let module_name = self
                             .environment
                             .imported_modules
@@ -1957,7 +1968,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                         location,
                         module,
                         name,
-                        typ: Arc::clone(&constructor.type_),
+                        typ: Arc::clone(&constructor.type_id),
                         constructor: Some(Box::from(constructor)),
                     }),
                     // It cannot be a Record because then this constant would have been

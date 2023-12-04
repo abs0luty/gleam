@@ -56,7 +56,7 @@ pub struct Environment<'a> {
     pub ambiguous_imported_items: HashMap<EcoString, LayerUsage>,
 
     /// ID-based memory arena that stores all types.
-    pub type_arena: &'a TypeArena,
+    pub type_arena: &'a mut TypeArena,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,7 +82,7 @@ impl<'a> Environment<'a> {
         target: Target,
         importable_modules: &'a im::HashMap<EcoString, ModuleInterface>,
         warnings: &'a TypeWarningEmitter,
-        type_arena: &'a TypeArena,
+        type_arena: &'a mut TypeArena,
     ) -> Self {
         let prelude = importable_modules
             .get(PRELUDE_MODULE_NAME)
@@ -203,7 +203,7 @@ impl<'a> Environment<'a> {
                 deprecation: Deprecation::NotDeprecated,
                 public: false,
                 variant: ValueConstructorVariant::LocalVariable { location },
-                type_: typ,
+                type_id: typ,
             },
         );
     }
@@ -218,7 +218,7 @@ impl<'a> Environment<'a> {
                 variant: ValueConstructorVariant::LocalConstant {
                     literal: literal.clone(),
                 },
-                type_: literal.type_(),
+                type_id: literal.type_(),
             },
         );
     }
@@ -239,7 +239,7 @@ impl<'a> Environment<'a> {
                 public,
                 deprecation,
                 variant,
-                type_: typ,
+                type_id: typ,
             },
         );
     }
@@ -341,7 +341,10 @@ impl<'a> Environment<'a> {
         }?;
 
         if name == "BitString"
-            && t.typ.is_bit_array(self.type_arena)
+            && self
+                .type_arena
+                .resolve(t.type_id)
+                .is_bit_array(self.type_arena)
             && (module_alias.is_none() || module_alias.as_deref() == Some("gleam"))
         {
             self.warnings
@@ -432,36 +435,35 @@ impl<'a> Environment<'a> {
     ///
     pub fn instantiate(
         &mut self,
-        t: TypeId,
+        type_id: TypeId,
         ids: &mut im::HashMap<u64, TypeId>,
         hydrator: &Hydrator,
     ) -> TypeId {
-        match t.deref() {
+        match self.type_arena.resolve(type_id) {
             Type::Named {
                 public,
                 name,
                 module,
                 args,
-            } => {
-                let args = args
+            } => self.type_arena.alloc(Type::Named {
+                public: *public,
+                name: name.clone(),
+                module: module.clone(),
+                args: args
                     .iter()
                     .map(|t| self.instantiate(t.clone(), ids, hydrator))
-                    .collect();
-                Arc::new(Type::Named {
-                    public: *public,
-                    name: name.clone(),
-                    module: module.clone(),
-                    args,
-                })
-            }
+                    .collect(),
+            }),
 
             Type::Var { type_: typ } => {
                 match typ.borrow().deref() {
-                    TypeVar::Link { type_: typ } => {
+                    TypeVar::Link { type_id: typ } => {
                         return self.instantiate(typ.clone(), ids, hydrator)
                     }
 
-                    TypeVar::Unbound { .. } => return Arc::new(Type::Var { type_: typ.clone() }),
+                    TypeVar::Unbound { .. } => {
+                        return self.type_arena.alloc(Type::Var { type_: typ.clone() })
+                    }
 
                     TypeVar::Generic { id } => match ids.get(id) {
                         Some(t) => return t.clone(),
@@ -475,7 +477,8 @@ impl<'a> Environment<'a> {
                         }
                     },
                 }
-                Arc::new(Type::Var { type_: typ.clone() })
+
+                self.type_arena.alloc(Type::Var { type_: typ.clone() })
             }
 
             Type::Fn { args, retrn, .. } => fn_(
@@ -654,7 +657,7 @@ pub fn unify(t1: TypeId, t2: TypeId) -> Result<(), UnifyError> {
 
     // Collapse right hand side type links. Left hand side will be collapsed in the next block.
     if let Type::Var { type_: typ } = t2.deref() {
-        if let TypeVar::Link { type_: typ } = typ.borrow().deref() {
+        if let TypeVar::Link { type_id: typ } = typ.borrow().deref() {
             return unify(t1, typ.clone());
         }
     }
@@ -667,7 +670,7 @@ pub fn unify(t1: TypeId, t2: TypeId) -> Result<(), UnifyError> {
         }
 
         let action = match typ.borrow().deref() {
-            TypeVar::Link { type_: typ } => Action::Unify(typ.clone()),
+            TypeVar::Link { type_id: typ } => Action::Unify(typ.clone()),
 
             TypeVar::Unbound { id } => {
                 unify_unbound_type(t2.clone(), *id)?;
@@ -687,7 +690,7 @@ pub fn unify(t1: TypeId, t2: TypeId) -> Result<(), UnifyError> {
 
         return match action {
             Action::Link => {
-                *typ.borrow_mut() = TypeVar::Link { type_: t2 };
+                *typ.borrow_mut() = TypeVar::Link { type_id: t2 };
                 Ok(())
             }
 

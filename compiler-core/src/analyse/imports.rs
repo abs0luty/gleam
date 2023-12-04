@@ -131,7 +131,7 @@ impl<'a> Importer<'a> {
             self.environment.insert_variable(
                 used_name.clone(),
                 value.variant.clone(),
-                value.type_.clone(),
+                value.type_id.clone(),
                 true,
                 value.deprecation.clone(),
             );

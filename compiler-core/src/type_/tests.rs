@@ -269,7 +269,7 @@ pub fn infer_module(src: &str, dep: Vec<DependencyModule<'_>>) -> Vec<(EcoString
         .filter(|(_, v)| v.public)
         .map(|(k, v)| {
             let mut printer = Printer::new();
-            (k.clone(), printer.pretty_print(&v.type_, 0))
+            (k.clone(), printer.pretty_print(&v.type_id, 0))
         })
         .sorted()
         .collect()

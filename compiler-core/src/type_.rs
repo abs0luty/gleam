@@ -53,7 +53,7 @@ impl TypeArena {
         Self::default()
     }
 
-    pub fn get(&self, id: TypeId) -> &Type {
+    pub fn resolve(&self, id: TypeId) -> &Type {
         self.arena.get(id).expect(&format!(
             "Cannot resolve type with id {id:?} in the type arena"
         ))
@@ -99,7 +99,7 @@ pub enum Type {
 impl Type {
     pub fn is_result_constructor(&self, arena: &TypeArena) -> bool {
         match self {
-            Type::Fn { retrn, .. } => arena.get(*retrn).is_result(),
+            Type::Fn { retrn, .. } => arena.resolve(*retrn).is_result(),
             _ => false,
         }
     }
@@ -223,8 +223,8 @@ impl Type {
 
             Self::Var { type_: typ } => {
                 let args: Vec<_> = match typ.borrow().deref() {
-                    TypeVar::Link { type_: typ } => {
-                        return arena.get(*typ).get_app_args(
+                    TypeVar::Link { type_id: typ } => {
+                        return arena.resolve(*typ).get_app_args(
                             public,
                             module,
                             name,
@@ -244,7 +244,7 @@ impl Type {
                 // We are an unbound type variable! So convert us to a type link
                 // to the desired type.
                 *typ.borrow_mut() = TypeVar::Link {
-                    type_: arena.alloc(Self::Named {
+                    type_id: arena.alloc(Self::Named {
                         name: name.into(),
                         module: module.into(),
                         args: args.clone(),
@@ -262,14 +262,18 @@ impl Type {
         match self {
             Self::Named { public: false, .. } => Some(self.clone()),
 
-            Self::Named { args, .. } => args.iter().find_map(|t| t.find_private_type()),
+            Self::Named { args, .. } => args
+                .iter()
+                .find_map(|arg| arena.resolve(*arg).find_private_type(arena)),
 
-            Self::Tuple { elems, .. } => elems.iter().find_map(|t| t.find_private_type()),
+            Self::Tuple { elems, .. } => elems
+                .iter()
+                .find_map(|elem| arena.resolve(*elem).find_private_type(arena)),
 
             Self::Fn { retrn, args, .. } => {
-                arena.get(*retrn).find_private_type(arena).or_else(|| {
+                arena.resolve(*retrn).find_private_type(arena).or_else(|| {
                     args.iter()
-                        .find_map(|t| arena.get(*t).find_private_type(arena))
+                        .find_map(|t| arena.resolve(*t).find_private_type(arena))
                 })
             }
 
@@ -278,7 +282,7 @@ impl Type {
 
                 TypeVar::Generic { .. } => None,
 
-                TypeVar::Link { type_: typ, .. } => arena.get(*typ).find_private_type(arena),
+                TypeVar::Link { type_id: typ, .. } => arena.resolve(*typ).find_private_type(arena),
             },
         }
     }
@@ -292,8 +296,8 @@ impl Type {
 }
 
 pub fn collapse_links(type_id: TypeId, arena: &TypeArena) -> TypeId {
-    if let Type::Var { type_: typ } = arena.get(type_id) {
-        if let TypeVar::Link { type_: typ } = typ.borrow().deref() {
+    if let Type::Var { type_: typ } = arena.resolve(type_id) {
+        if let TypeVar::Link { type_id: typ } = typ.borrow().deref() {
             return collapse_links(*typ, arena);
         }
     }
@@ -643,7 +647,7 @@ pub enum TypeVar {
     /// Link is type variable where it was an unbound variable but we worked out
     /// that it is some other type and now we point to that one.
     ///
-    Link { type_: TypeId },
+    Link { type_id: TypeId },
     /// A Generic variable stands in for any possible type and cannot be
     /// specialised to any one type
     ///
@@ -670,42 +674,42 @@ impl TypeVar {
 
     pub fn is_nil(&self, arena: &TypeArena) -> bool {
         match self {
-            Self::Link { type_ } => arena.get(*type_).is_nil(arena),
+            Self::Link { type_id: type_ } => arena.resolve(*type_).is_nil(arena),
             _ => false,
         }
     }
 
     pub fn is_bool(&self, arena: &TypeArena) -> bool {
         match self {
-            Self::Link { type_ } => arena.get(*type_).is_bool(arena),
+            Self::Link { type_id: type_ } => arena.resolve(*type_).is_bool(arena),
             _ => false,
         }
     }
 
     pub fn is_int(&self, arena: &TypeArena) -> bool {
         match self {
-            Self::Link { type_ } => arena.get(*type_).is_int(arena),
+            Self::Link { type_id: type_ } => arena.resolve(*type_).is_int(arena),
             _ => false,
         }
     }
 
     pub fn is_float(&self, arena: &TypeArena) -> bool {
         match self {
-            Self::Link { type_ } => arena.get(*type_).is_float(arena),
+            Self::Link { type_id: type_ } => arena.resolve(*type_).is_float(arena),
             _ => false,
         }
     }
 
     pub fn is_string(&self, arena: &TypeArena) -> bool {
         match self {
-            Self::Link { type_ } => arena.get(*type_).is_string(arena),
+            Self::Link { type_id: type_ } => arena.resolve(*type_).is_string(arena),
             _ => false,
         }
     }
 
     pub fn named_type_name(&self, arena: &TypeArena) -> Option<(EcoString, EcoString)> {
         match self {
-            Self::Link { type_ } => arena.get(*type_).named_type_name(arena),
+            Self::Link { type_id: type_ } => arena.resolve(*type_).named_type_name(arena),
             _ => None,
         }
     }
@@ -717,7 +721,7 @@ pub struct TypeConstructor {
     pub origin: SrcSpan,
     pub module: EcoString,
     pub parameters: Vec<TypeId>,
-    pub typ: TypeId,
+    pub type_id: TypeId,
     pub deprecation: Deprecation,
 }
 impl TypeConstructor {
@@ -732,7 +736,7 @@ pub struct ValueConstructor {
     pub public: bool,
     pub deprecation: Deprecation,
     pub variant: ValueConstructorVariant,
-    pub type_: TypeId,
+    pub type_id: TypeId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -839,10 +843,18 @@ fn assert_no_labelled_arguments<A>(args: &[CallArg<A>]) -> Result<(), Error> {
 /// could cause naively-implemented type checking to diverge.
 /// While traversing the type tree.
 ///
-fn unify_unbound_type(typ: TypeId, own_id: u64) -> Result<(), UnifyError> {
-    if let Type::Var { type_: typ } = typ.deref() {
+fn unify_unbound_type(
+    type_id: TypeId,
+    own_id: u64,
+    type_arena: &TypeArena,
+) -> Result<(), UnifyError> {
+    let resolved_type = type_arena.resolve(type_id);
+
+    if let Type::Var { type_: typ } = resolved_type {
         let new_value = match typ.borrow().deref() {
-            TypeVar::Link { type_: typ, .. } => return unify_unbound_type(typ.clone(), own_id),
+            TypeVar::Link { type_id: typ, .. } => {
+                return unify_unbound_type(typ.clone(), own_id, type_arena)
+            }
 
             TypeVar::Unbound { id } => {
                 if id == &own_id {
@@ -861,24 +873,25 @@ fn unify_unbound_type(typ: TypeId, own_id: u64) -> Result<(), UnifyError> {
         return Ok(());
     }
 
-    match typ.deref() {
+    match type_arena.resolve(type_id) {
         Type::Named { args, .. } => {
             for arg in args {
-                unify_unbound_type(arg.clone(), own_id)?
+                unify_unbound_type(arg.clone(), own_id, type_arena)?
             }
             Ok(())
         }
 
         Type::Fn { args, retrn } => {
             for arg in args {
-                unify_unbound_type(arg.clone(), own_id)?;
+                unify_unbound_type(arg.clone(), own_id, type_arena)?;
             }
-            unify_unbound_type(retrn.clone(), own_id)
+
+            unify_unbound_type(retrn.clone(), own_id, type_arena)
         }
 
         Type::Tuple { elems, .. } => {
             for elem in elems {
-                unify_unbound_type(elem.clone(), own_id)?
+                unify_unbound_type(elem.clone(), own_id, type_arena)?
             }
             Ok(())
         }
@@ -888,13 +901,15 @@ fn unify_unbound_type(typ: TypeId, own_id: u64) -> Result<(), UnifyError> {
 }
 
 fn match_fun_type(
-    typ: TypeId,
+    type_id: TypeId,
     arity: usize,
     environment: &mut Environment<'_>,
 ) -> Result<(Vec<TypeId>, TypeId), MatchFunTypeError> {
-    if let Type::Var { type_: typ } = typ.deref() {
+    let resolved_type = environment.type_arena.resolve(type_id);
+
+    if let Type::Var { type_: typ } = resolved_type {
         let new_value = match typ.borrow().deref() {
-            TypeVar::Link { type_: typ, .. } => {
+            TypeVar::Link { type_id: typ, .. } => {
                 return match_fun_type(typ.clone(), arity, environment);
             }
 
@@ -909,13 +924,13 @@ fn match_fun_type(
 
         if let Some((args, retrn)) = new_value {
             *typ.borrow_mut() = TypeVar::Link {
-                type_: fn_(args.clone(), retrn.clone()),
+                type_id: fn_(args.clone(), retrn.clone()),
             };
             return Ok((args, retrn));
         }
     }
 
-    if let Type::Fn { args, retrn } = typ.deref() {
+    if let Type::Fn { args, retrn } = resolved_type {
         return if args.len() != arity {
             Err(MatchFunTypeError::IncorrectArity {
                 expected: args.len(),
@@ -926,15 +941,15 @@ fn match_fun_type(
         };
     }
 
-    Err(MatchFunTypeError::NotFn { typ })
+    Err(MatchFunTypeError::NotFn { typ: type_id })
 }
 
-pub fn generalise(t: TypeId) -> TypeId {
-    match t.deref() {
+pub fn generalise(type_id: TypeId, type_arena: &mut TypeArena) -> TypeId {
+    match type_arena.resolve(type_id) {
         Type::Var { type_: typ } => match typ.borrow().deref() {
             TypeVar::Unbound { id } => generic_var(*id),
-            TypeVar::Link { type_: typ } => generalise(typ.clone()),
-            TypeVar::Generic { .. } => Arc::new(Type::Var { type_: typ.clone() }),
+            TypeVar::Link { type_id: typ } => generalise(typ.clone(), type_arena),
+            TypeVar::Generic { .. } => type_arena.alloc(Type::Var { type_: typ.clone() }),
         },
 
         Type::Named {
@@ -943,8 +958,9 @@ pub fn generalise(t: TypeId) -> TypeId {
             name,
             args,
         } => {
-            let args = args.iter().map(|t| generalise(t.clone())).collect();
-            Arc::new(Type::Named {
+            let args = args.iter().map(|t| generalise(t.clone(), type_arena)).collect();
+
+            type_arena.alloc(Type::Named {
                 public: *public,
                 module: module.clone(),
                 name: name.clone(),
@@ -953,11 +969,12 @@ pub fn generalise(t: TypeId) -> TypeId {
         }
 
         Type::Fn { args, retrn } => fn_(
-            args.iter().map(|t| generalise(t.clone())).collect(),
-            generalise(retrn.clone()),
+            args.iter().map(|t| generalise(t.clone(), type_arena)).collect(),
+            generalise(retrn.clone(), type_arena),
         ),
 
-        Type::Tuple { elems } => tuple(elems.iter().map(|t| generalise(t.clone())).collect()),
+        Type::Tuple { elems } => tuple(elems.iter()
+            .map(|t| generalise(t.clone(), type_arena)).collect()),
     }
 }
 

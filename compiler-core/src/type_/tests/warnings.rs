@@ -20,7 +20,7 @@ fn todo_warning_test() {
             kind: TodoKind::Keyword,
             location: SrcSpan { start: 17, end: 21 },
             typ: Arc::new(Type::Var {
-                type_: Arc::new(RefCell::new(TypeVar::Link { type_: int() })),
+                type_: Arc::new(RefCell::new(TypeVar::Link { type_id: int() })),
             }),
         },
     );

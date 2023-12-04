@@ -353,7 +353,7 @@ impl TypedExpr {
         match self {
             Self::NegateBool { .. } => bool(),
             Self::NegateInt { value, .. } => value.type_(),
-            Self::Var { constructor, .. } => constructor.type_.clone(),
+            Self::Var { constructor, .. } => constructor.type_id.clone(),
             Self::Fn { typ, .. }
             | Self::Int { typ, .. }
             | Self::Todo { type_: typ, .. }

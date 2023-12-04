@@ -1,4 +1,4 @@
-use crate::type_::PRELUDE_MODULE_NAME;
+use crate::type_::{TypeArena, PRELUDE_MODULE_NAME};
 use crate::{
     ast::{SrcSpan, TypedModule, UntypedModule},
     build::{
@@ -89,6 +89,7 @@ where
         already_defined_modules: &mut im::HashMap<EcoString, Utf8PathBuf>,
         stale_modules: &mut StaleTracker,
         telemetry: &dyn Telemetry,
+        type_arena: &TypeArena,
     ) -> Result<Vec<Module>, Error> {
         let span = tracing::info_span!("compile", package = %self.config.name.as_str());
         let _enter = span.enter();
@@ -141,6 +142,7 @@ where
             loaded.to_compile,
             existing_modules,
             warnings,
+            type_arena,
         )?;
 
         tracing::debug!("performing_code_generation");
@@ -387,9 +389,10 @@ fn analyse(
     target: Target,
     mode: Mode,
     ids: &UniqueIdGenerator,
-    mut parsed_modules: Vec<UncompiledModule>,
+    parsed_modules: Vec<UncompiledModule>,
     module_types: &mut im::HashMap<EcoString, type_::ModuleInterface>,
     warnings: &WarningEmitter,
+    type_arena: &mut TypeArena,
 ) -> Result<Vec<Module>, Error> {
     let mut modules = Vec::with_capacity(parsed_modules.len() + 1);
     let direct_dependencies = package_config.dependencies_for(mode).expect("Package deps");
@@ -424,6 +427,7 @@ fn analyse(
             module_types,
             &TypeWarningEmitter::new(path.clone(), code.clone(), warnings.clone()),
             &direct_dependencies,
+            type_arena,
         )
         .map_err(|error| Error::Type {
             path: path.clone(),

@@ -911,7 +911,7 @@ fn var<'a>(name: &'a str, constructor: &'a ValueConstructor, env: &mut Env<'a>) 
     match &constructor.variant {
         ValueConstructorVariant::Record {
             name: record_name, ..
-        } => match constructor.type_.deref() {
+        } => match constructor.type_id.deref() {
             Type::Fn { args, .. } => {
                 let chars = incrementing_args_list(args.len());
                 "fun("
@@ -1809,7 +1809,7 @@ fn type_var_ids(type_: &Type, ids: &mut HashMap<u64, u64>) {
                 let count = ids.entry(*id).or_insert(0);
                 *count += 1;
             }
-            TypeVar::Link { type_: typ } => type_var_ids(typ, ids),
+            TypeVar::Link { type_id: typ } => type_var_ids(typ, ids),
         },
         Type::Named { args, .. } => {
             for arg in args {
@@ -1931,7 +1931,7 @@ impl<'a> TypePrinter<'a> {
                 },
                 None => id_to_type_var(*id),
             },
-            TypeVar::Link { type_: typ } => self.print(typ),
+            TypeVar::Link { type_id: typ } => self.print(typ),
         }
     }
 

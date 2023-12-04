@@ -13,7 +13,7 @@ pub use self::constant::{Constant, TypedConstant, UntypedConstant};
 use crate::analyse::Inferred;
 use crate::build::{Located, Target};
 use crate::type_::{
-    self, Deprecation, ModuleValueConstructor, PatternConstructor, ValueConstructor, TypeId,
+    self, Deprecation, ModuleValueConstructor, PatternConstructor, TypeId, ValueConstructor,
 };
 
 use ecow::EcoString;

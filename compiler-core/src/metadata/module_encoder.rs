@@ -7,8 +7,8 @@ use crate::{
     },
     schema_capnp::{self as schema, *},
     type_::{
-        self, AccessorsMap, Deprecation, FieldMap, RecordAccessor, Type, TypeConstructor,
-        TypeValueConstructor, TypeVar, ValueConstructor, ValueConstructorVariant, TypeId,
+        self, AccessorsMap, Deprecation, FieldMap, RecordAccessor, Type, TypeConstructor, TypeId,
+        TypeValueConstructor, TypeVar, ValueConstructor, ValueConstructorVariant,
     },
 };
 use std::{collections::HashMap, ops::Deref};
@@ -142,7 +142,7 @@ impl<'a> ModuleEncoder<'a> {
             Deprecation::Deprecated { message } => message,
         });
         let type_builder = builder.reborrow().init_type();
-        self.build_type(type_builder, &constructor.typ);
+        self.build_type(type_builder, &constructor.type_id);
         self.build_types(
             builder
                 .reborrow()
@@ -200,7 +200,7 @@ impl<'a> ModuleEncoder<'a> {
             Deprecation::NotDeprecated => "",
             Deprecation::Deprecated { message } => message,
         });
-        self.build_type(builder.reborrow().init_type(), &constructor.type_);
+        self.build_type(builder.reborrow().init_type(), &constructor.type_id);
         self.build_value_constructor_variant(builder.init_variant(), &constructor.variant);
     }
 
@@ -447,7 +447,7 @@ impl<'a> ModuleEncoder<'a> {
             ),
 
             Type::Var { type_: typ } => match typ.borrow().deref() {
-                TypeVar::Link { type_: typ } => self.build_type(builder, typ),
+                TypeVar::Link { type_id: typ } => self.build_type(builder, typ),
                 TypeVar::Unbound { id, .. } | TypeVar::Generic { id } => {
                     self.build_type_var(builder.init_var(), *id)
                 }

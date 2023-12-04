@@ -146,7 +146,7 @@ impl<'a, 'b, 'c> PipeTyper<'a, 'b, 'c> {
             constructor: ValueConstructor {
                 public: true,
                 deprecation: Deprecation::NotDeprecated,
-                type_: self.argument_type.clone(),
+                type_id: self.argument_type.clone(),
                 variant: ValueConstructorVariant::LocalVariable {
                     location: self.argument_location,
                 },

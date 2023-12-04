@@ -1183,7 +1183,7 @@ impl<'comments> Formatter<'comments> {
             .append(name)
             .append(self.docs_fn_args(args, &mut printer))
             .append(" -> ".to_doc())
-            .append(printer.print(&return_type))
+            .append(printer.print(return_type))
     }
 
     // Will always print the types, even if they were implicit in the original source
@@ -1195,7 +1195,7 @@ impl<'comments> Formatter<'comments> {
         wrap_args(args.iter().map(|arg| {
             arg.names
                 .to_doc()
-                .append(": ".to_doc().append(printer.print(&arg.type_)))
+                .append(": ".to_doc().append(printer.print(arg.type_)))
                 .group()
         }))
     }

@@ -87,34 +87,35 @@ fn collect_generic_usages(
     type_arena: &TypeArena,
 ) -> HashMap<u64, u64> {
     for typ in types {
-        generic_ids(typ, &mut ids);
+        generic_ids(typ, &mut ids, type_arena);
     }
     ids
 }
 
-fn generic_ids(type_: &Type, ids: &mut HashMap<u64, u64>) {
-    match type_ {
-        Type::Var { type_: typ } => match typ.borrow().deref() {
+fn generic_ids(type_id: TypeId, ids: &mut HashMap<u64, u64>, type_arena: &TypeArena) {
+    match type_arena.resolve(type_id) {
+        Type::Var { type_ } => match typ.borrow().deref() {
             TypeVar::Unbound { id, .. } | TypeVar::Generic { id, .. } => {
                 let count = ids.entry(*id).or_insert(0);
                 *count += 1;
             }
-            TypeVar::Link { type_: typ } => generic_ids(typ, ids),
+            TypeVar::Link { type_id } => generic_ids(type_id, ids, type_arena),
         },
         Type::Named { args, .. } => {
             for arg in args {
-                generic_ids(arg, ids)
+                generic_ids(*arg, ids, type_arena)
             }
         }
         Type::Fn { args, retrn } => {
             for arg in args {
-                generic_ids(arg, ids)
+                generic_ids(*arg, ids, type_arena)
             }
-            generic_ids(retrn, ids);
+
+            generic_ids(*retrn, ids, type_arena);
         }
         Type::Tuple { elems } => {
             for elem in elems {
-                generic_ids(elem, ids)
+                generic_ids(*elem, ids, type_arena)
             }
         }
     }
@@ -307,7 +308,7 @@ impl<'a> TypeScriptGenerator<'a> {
                 public,
                 type_,
                 ..
-            }) if *public => vec![self.type_alias(alias, type_)],
+            }) if *public => vec![self.type_alias(alias, *type_)],
             Definition::TypeAlias(TypeAlias { .. }) => vec![],
 
             Definition::Import(Import { .. }) => vec![],
@@ -338,17 +339,17 @@ impl<'a> TypeScriptGenerator<'a> {
                 public,
                 return_type,
                 ..
-            }) if *public => vec![self.module_function(name, arguments, return_type)],
+            }) if *public => vec![self.module_function(name, arguments, *return_type)],
             Definition::Function(Function { .. }) => vec![],
         }
     }
 
-    fn type_alias(&mut self, alias: &str, type_: &Type) -> Output<'a> {
+    fn type_alias(&mut self, alias: &str, type_id: TypeId) -> Output<'a> {
         Ok(docvec![
             "export type ",
             Document::String(ts_safe_type_name(alias.to_string())),
             " = ",
-            self.print_type(type_),
+            self.print_type(type_id),
             ";"
         ])
     }
@@ -388,7 +389,11 @@ impl<'a> TypeScriptGenerator<'a> {
 
         definitions.push(Ok(docvec![
             "export type ",
-            name_with_generics(Document::String(format!("{name}$")), typed_parameters, self.type_arena),
+            name_with_generics(
+                Document::String(format!("{name}$")),
+                typed_parameters,
+                self.type_arena
+            ),
             " = ",
             definition,
             ";",
@@ -433,7 +438,7 @@ impl<'a> TypeScriptGenerator<'a> {
                     .as_ref()
                     .map(|s| super::maybe_escape_identifier_doc(s))
                     .unwrap_or_else(|| Document::String(format!("argument${i}")));
-                docvec![name, ": ", self.do_print_force_generic_param(&arg.type_)]
+                docvec![name, ": ", self.do_print_force_generic_param(arg.type_)]
             })),
             ";",
             line(),
@@ -449,7 +454,7 @@ impl<'a> TypeScriptGenerator<'a> {
                     docvec![
                         name,
                         ": ",
-                        self.do_print_force_generic_param(&arg.type_),
+                        self.do_print_force_generic_param(arg.type_),
                         ";"
                     ]
                 }),
@@ -466,7 +471,7 @@ impl<'a> TypeScriptGenerator<'a> {
             "export const ",
             super::maybe_escape_identifier_doc(name),
             ": ",
-            self.print_type(&value.type_()),
+            self.print_type(value.type_()),
             ";",
         ])
     }
@@ -475,12 +480,12 @@ impl<'a> TypeScriptGenerator<'a> {
         &mut self,
         name: &'a str,
         args: &'a [TypedArg],
-        return_type: &'a TypeId,
+        return_type: TypeId,
     ) -> Output<'a> {
         let generic_usages = collect_generic_usages(
             HashMap::new(),
             std::iter::once(return_type).chain(args.iter().map(|a| &a.type_)),
-            self.type_arena
+            self.type_arena,
         );
         let generic_names: Vec<Document<'_>> = generic_usages
             .iter()
@@ -506,13 +511,13 @@ impl<'a> TypeScriptGenerator<'a> {
                                 "x",
                                 i,
                                 ": ",
-                                self.print_type_with_generic_usages(&a.type_, &generic_usages)
+                                self.print_type_with_generic_usages(a.type_, &generic_usages)
                             ]
                         }
                         Some(name) => docvec![
                             super::maybe_escape_identifier_doc(name),
                             ": ",
-                            self.print_type_with_generic_usages(&a.type_, &generic_usages)
+                            self.print_type_with_generic_usages(a.type_, &generic_usages)
                         ],
                     }),
             ),
@@ -524,8 +529,8 @@ impl<'a> TypeScriptGenerator<'a> {
 
     /// Converts a Gleam type into a TypeScript type string
     ///
-    pub fn print_type(&mut self, type_: &Type) -> Document<'static> {
-        self.do_print(type_, None)
+    pub fn print_type(&mut self, type_id: TypeId) -> Document<'static> {
+        self.do_print(type_id, None)
     }
 
     /// Helper function for generating a TypeScript type string after collecting
@@ -533,10 +538,10 @@ impl<'a> TypeScriptGenerator<'a> {
     ///
     pub fn print_type_with_generic_usages(
         &mut self,
-        type_: &Type,
+        type_id: TypeId,
         generic_usages: &HashMap<u64, u64>,
     ) -> Document<'static> {
-        self.do_print(type_, Some(generic_usages))
+        self.do_print(type_id, Some(generic_usages))
     }
 
     /// Get the locally used name for a module. Either the last segment, or the
@@ -562,10 +567,10 @@ impl<'a> TypeScriptGenerator<'a> {
 
     fn do_print(
         &mut self,
-        type_: &Type,
+        type_id: TypeId,
         generic_usages: Option<&HashMap<u64, u64>>,
     ) -> Document<'static> {
-        match type_ {
+        match self.type_arena.resolve(type_id) {
             Type::Var { type_: typ } => self.print_var(&typ.borrow(), generic_usages, false),
 
             Type::Named {
@@ -576,14 +581,14 @@ impl<'a> TypeScriptGenerator<'a> {
                 name, args, module, ..
             } => self.print_type_app(name, args, module, generic_usages),
 
-            Type::Fn { args, retrn } => self.print_fn(args, retrn, generic_usages),
+            Type::Fn { args, retrn } => self.print_fn(args, *retrn, generic_usages),
 
-            Type::Tuple { elems } => tuple(elems.iter().map(|e| self.do_print(e, generic_usages))),
+            Type::Tuple { elems } => tuple(elems.iter().map(|e| self.do_print(*e, generic_usages))),
         }
     }
 
-    fn do_print_force_generic_param(&mut self, type_: &Type) -> Document<'static> {
-        match type_ {
+    fn do_print_force_generic_param(&mut self, type_id: TypeId) -> Document<'static> {
+        match self.type_arena.resolve(type_id) {
             Type::Var { type_: typ } => self.print_var(&typ.borrow(), None, true),
 
             Type::Named {
@@ -594,9 +599,9 @@ impl<'a> TypeScriptGenerator<'a> {
                 name, args, module, ..
             } => self.print_type_app(name, args, module, None),
 
-            Type::Fn { args, retrn } => self.print_fn(args, retrn, None),
+            Type::Fn { args, retrn } => self.print_fn(args, *retrn, None),
 
-            Type::Tuple { elems } => tuple(elems.iter().map(|e| self.do_print(e, None))),
+            Type::Tuple { elems } => tuple(elems.iter().map(|e| self.do_print(*e, None))),
         }
     }
 
@@ -621,7 +626,7 @@ impl<'a> TypeScriptGenerator<'a> {
                     }
                 }
             },
-            TypeVar::Link { type_: typ } => self.do_print(typ, generic_usages),
+            TypeVar::Link { type_id: typ } => self.do_print(*typ, generic_usages),
         }
     }
 
@@ -653,14 +658,14 @@ impl<'a> TypeScriptGenerator<'a> {
                 self.tracker.prelude_used = true;
                 docvec![
                     "_.List",
-                    wrap_generic_args(args.iter().map(|x| self.do_print(x, generic_usages)))
+                    wrap_generic_args(args.iter().map(|x| self.do_print(*x, generic_usages)))
                 ]
             }
             "Result" => {
                 self.tracker.prelude_used = true;
                 docvec![
                     "_.Result",
-                    wrap_generic_args(args.iter().map(|x| self.do_print(x, generic_usages)))
+                    wrap_generic_args(args.iter().map(|x| self.do_print(*x, generic_usages)))
                 ]
             }
             // Getting here should mean we either forgot a built-in type or there is a
@@ -699,7 +704,7 @@ impl<'a> TypeScriptGenerator<'a> {
         // If the App type takes arguments, pass them in as TypeScript generics
         docvec![
             name,
-            wrap_generic_args(args.iter().map(|a| self.do_print(a, generic_usages)))
+            wrap_generic_args(args.iter().map(|a| self.do_print(*a, generic_usages)))
         ]
     }
 
@@ -708,7 +713,7 @@ impl<'a> TypeScriptGenerator<'a> {
     fn print_fn(
         &mut self,
         args: &[TypeId],
-        retrn: &Type,
+        retrn: TypeId,
         generic_usages: Option<&HashMap<u64, u64>>,
     ) -> Document<'static> {
         docvec![
@@ -716,7 +721,7 @@ impl<'a> TypeScriptGenerator<'a> {
                 "x",
                 idx,
                 ": ",
-                self.do_print(a, generic_usages)
+                self.do_print(*a, generic_usages)
             ])),
             " => ",
             self.do_print(retrn, generic_usages)

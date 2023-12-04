@@ -21,8 +21,8 @@ use crate::{
         hydrator::Hydrator,
         prelude::*,
         AccessorsMap, Deprecation, ModuleInterface, PatternConstructor, RecordAccessor, Type,
-        TypeArena, TypeConstructor, TypeValueConstructor, TypeValueConstructorParameter,
-        ValueConstructor, ValueConstructorVariant, TypeId,
+        TypeArena, TypeConstructor, TypeId, TypeValueConstructor, TypeValueConstructorParameter,
+        ValueConstructor, ValueConstructorVariant,
     },
     uid::UniqueIdGenerator,
     warning::TypeWarningEmitter,
@@ -90,7 +90,7 @@ pub fn infer_module<A>(
     modules: &im::HashMap<EcoString, ModuleInterface>,
     warnings: &TypeWarningEmitter,
     direct_dependencies: &HashMap<EcoString, A>,
-    type_arena: &TypeArena,
+    type_arena: &mut TypeArena,
 ) -> Result<TypedModule, Error> {
     let name = module.name.clone();
     let documentation = std::mem::take(&mut module.documentation);
@@ -208,7 +208,7 @@ pub fn infer_module<A>(
         if !value.public {
             continue;
         }
-        if let Some(leaked) = value.type_.find_private_type(type_arena) {
+        if let Some(leaked) = value.type_id.find_private_type(type_arena) {
             return Err(Error::PrivateTypeLeak {
                 location: value.variant.definition_location(),
                 leaked,
@@ -291,7 +291,7 @@ fn register_type_alias(
             module: module.clone(),
             public: *public,
             parameters,
-            typ,
+            type_id: typ,
             deprecation: deprecation.clone(),
         },
     )?;
@@ -337,7 +337,7 @@ fn register_types_from_custom_type<'a>(
             public: *public,
             deprecation: deprecation.clone(),
             parameters,
-            typ,
+            type_id: typ,
         },
     )?;
     if !public {
@@ -371,7 +371,7 @@ fn register_values_from_custom_type(
         .module_types
         .get(name)
         .expect("Type for custom type not found in register_values")
-        .typ
+        .type_id
         .clone();
     if let Some(accessors) = custom_type_accessors(constructors, &mut hydrator, environment)? {
         let map = AccessorsMap {
@@ -445,7 +445,7 @@ fn register_values_from_custom_type(
             ValueConstructor {
                 deprecation: deprecation.clone(),
                 public: *public && !opaque,
-                type_: typ.clone(),
+                type_id: typ.clone(),
                 variant: constructor_info.clone(),
             },
         );
@@ -598,7 +598,7 @@ fn infer_function(
         .get_variable(&name)
         .expect("Could not find preregistered type for function");
     let field_map = preregistered_fn.field_map().cloned();
-    let preregistered_type = preregistered_fn.type_.clone();
+    let preregistered_type = preregistered_fn.type_id.clone();
     let (args_types, return_type) = preregistered_type
         .fn_types()
         .expect("Preregistered type for fn was not a fn");
@@ -748,7 +748,7 @@ fn insert_type_alias(
     let typ = environment
         .get_type_constructor(&None, &alias, location)
         .expect("Could not find existing type for type alias")
-        .typ
+        .type_id
         .clone();
     Ok(Definition::TypeAlias(TypeAlias {
         documentation: doc,
@@ -790,7 +790,7 @@ fn infer_custom_type(
                 let preregistered_fn = environment
                     .get_variable(&name)
                     .expect("Could not find preregistered type for function");
-                let preregistered_type = preregistered_fn.type_.clone();
+                let preregistered_type = preregistered_fn.type_id.clone();
 
                 let args = if let Some((args_types, _return_type)) = preregistered_type.fn_types() {
                     args.into_iter()
@@ -925,7 +925,7 @@ fn infer_module_constant(
             literal: typed_expr.clone(),
             module: module_name.clone(),
         },
-        type_: type_.clone(),
+        type_id: type_.clone(),
     };
 
     environment.insert_variable(
@@ -1042,7 +1042,7 @@ fn generalise_function(
         .get_variable(&name)
         .expect("Could not find preregistered type for function");
     let field_map = function.field_map().cloned();
-    let typ = function.type_.clone();
+    let typ = function.type_id.clone();
 
     let type_ = type_::generalise(typ);
 
@@ -1071,7 +1071,7 @@ fn generalise_function(
         ValueConstructor {
             public,
             deprecation: deprecation.clone(),
-            type_,
+            type_id: type_,
             variant,
         },
     );

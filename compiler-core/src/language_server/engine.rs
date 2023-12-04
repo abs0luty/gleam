@@ -428,7 +428,7 @@ fn type_completion(
         None => name.to_string(),
     };
 
-    let kind = Some(if type_.typ.is_variable() {
+    let kind = Some(if type_.type_id.is_variable() {
         lsp::CompletionItemKind::VARIABLE
     } else {
         lsp::CompletionItemKind::CLASS
@@ -452,7 +452,7 @@ fn value_completion(
         None => name.to_string(),
     };
 
-    let type_ = Printer::new().pretty_print(&value.type_, 0);
+    let type_ = Printer::new().pretty_print(&value.type_id, 0);
 
     let kind = Some(match value.variant {
         ValueConstructorVariant::LocalVariable { .. } => lsp::CompletionItemKind::VARIABLE,

@@ -26,8 +26,11 @@ pub struct Printer<'ta> {
 }
 
 impl<'ta> Printer<'ta> {
-    pub fn new() -> Self {
-        Default::default()
+    pub fn default(type_arena: &'ta TypeArena) -> Self {
+        Self {
+            type_arena,
+            ..Default::default()
+        }
     }
 
     pub fn with_names(&mut self, names: im::HashMap<u64, EcoString>) {
@@ -36,7 +39,7 @@ impl<'ta> Printer<'ta> {
 
     /// Render a Type as a well formatted string.
     ///
-    pub fn pretty_print(&mut self, typ: &TypeId, initial_indent: usize) -> String {
+    pub fn pretty_print(&mut self, typ: TypeId, initial_indent: usize) -> String {
         let mut buffer = String::with_capacity(initial_indent);
         for _ in 0..initial_indent {
             buffer.push(' ');
@@ -51,8 +54,8 @@ impl<'ta> Printer<'ta> {
     // TODO: have this function return a Document that borrows from the Type.
     // Is this possible? The lifetime would have to go through the Arc<Refcell<Type>>
     // for TypeVar::Link'd types.
-    pub fn print<'a>(&mut self, typ: &TypeId) -> Document<'a> {
-        match self.type_arena.get(typ) {
+    pub fn print<'a>(&mut self, typ: TypeId) -> Document<'a> {
+        match self.type_arena.resolve(typ) {
             Type::Named {
                 name, args, module, ..
             } => {
@@ -77,7 +80,7 @@ impl<'ta> Printer<'ta> {
                 .append(") ->")
                 .append(
                     break_("", " ")
-                        .append(self.print(retrn))
+                        .append(self.print(*retrn))
                         .nest(INDENT)
                         .group(),
                 ),
@@ -98,7 +101,9 @@ impl<'ta> Printer<'ta> {
 
     fn type_var_doc<'a>(&mut self, typ: &TypeVar) -> Document<'a> {
         match typ {
-            TypeVar::Link { type_: ref typ, .. } => self.print(typ),
+            TypeVar::Link {
+                type_id: ref typ, ..
+            } => self.print(*typ),
             TypeVar::Unbound { id, .. } | TypeVar::Generic { id, .. } => self.generic_type_var(*id),
         }
     }
@@ -146,7 +151,7 @@ impl<'ta> Printer<'ta> {
         }
 
         let args = concat(Itertools::intersperse(
-            args.iter().map(|t| self.print(t).group()),
+            args.iter().map(|t| self.print(*t).group()),
             break_(",", ", "),
         ));
         break_("", "")
@@ -313,7 +318,7 @@ fn pretty_print_test() {
     assert_string!(
         Type::Var {
             type_: Arc::new(RefCell::new(TypeVar::Link {
-                type_: Arc::new(Type::Named {
+                type_id: Arc::new(Type::Named {
                     args: vec![],
                     module: "whatever".into(),
                     name: "Int".into(),

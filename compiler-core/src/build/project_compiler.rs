@@ -11,7 +11,7 @@ use crate::{
     manifest::{ManifestPackage, ManifestPackageSource},
     metadata,
     paths::{self, ProjectPaths},
-    type_::{self, ModuleFunction},
+    type_::{self, ModuleFunction, TypeArena},
     uid::UniqueIdGenerator,
     version::COMPILER_VERSION,
     warning::{self, WarningEmitter, WarningEmitterIO},
@@ -177,9 +177,10 @@ where
         })
     }
 
-    pub fn compile_root_package(&mut self) -> Result<Package, Error> {
+    pub fn compile_root_package(&mut self, arena: &TypeArena) -> Result<Package, Error> {
         let config = self.config.clone();
-        let modules = self.compile_gleam_package(&config, true, self.paths.root().to_path_buf())?;
+        let modules =
+            self.compile_gleam_package(&config, true, self.paths.root().to_path_buf(), type_arena)?;
         Ok(Package { config, modules })
     }
 
@@ -508,6 +509,7 @@ where
         config: &PackageConfig,
         is_root: bool,
         root_path: Utf8PathBuf,
+        type_arena: &TypeArena,
     ) -> Result<Vec<Module>, Error> {
         let out_path =
             self.paths
@@ -563,6 +565,7 @@ where
             &mut self.defined_modules,
             &mut self.stale_modules,
             self.telemetry.as_ref(),
+            type_arena,
         )?;
 
         Ok(compiled)

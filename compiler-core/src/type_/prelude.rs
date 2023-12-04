@@ -168,7 +168,7 @@ pub fn unbound_var(id: u64) -> TypeId {
 #[cfg(test)]
 pub fn link(type_: TypeId) -> TypeId {
     Arc::new(Type::Var {
-        type_: Arc::new(RefCell::new(TypeVar::Link { type_ })),
+        type_: Arc::new(RefCell::new(TypeVar::Link { type_id: type_ })),
     })
 }
 
@@ -177,7 +177,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
         public: true,
         deprecation: NotDeprecated,
         variant,
-        type_,
+        type_id: type_,
     };
 
     let mut prelude = ModuleInterface {
@@ -198,7 +198,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                 let v = TypeConstructor {
                     origin: Default::default(),
                     parameters: vec![],
-                    typ: bits(),
+                    type_id: bits(),
                     module: PRELUDE_MODULE_NAME.into(),
                     public: true,
                     deprecation: NotDeprecated,
@@ -258,7 +258,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                     TypeConstructor {
                         origin: Default::default(),
                         parameters: vec![],
-                        typ: bool(),
+                        type_id: bool(),
                         module: PRELUDE_MODULE_NAME.into(),
                         public: true,
                         deprecation: NotDeprecated,
@@ -272,7 +272,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                     TypeConstructor {
                         origin: Default::default(),
                         parameters: vec![],
-                        typ: float(),
+                        type_id: float(),
                         module: PRELUDE_MODULE_NAME.into(),
                         public: true,
                         deprecation: NotDeprecated,
@@ -285,7 +285,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                     INT.into(),
                     TypeConstructor {
                         parameters: vec![],
-                        typ: int(),
+                        type_id: int(),
                         origin: Default::default(),
                         module: PRELUDE_MODULE_NAME.into(),
                         public: true,
@@ -301,7 +301,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                     TypeConstructor {
                         origin: Default::default(),
                         parameters: vec![list_parameter.clone()],
-                        typ: list(list_parameter),
+                        type_id: list(list_parameter),
                         module: PRELUDE_MODULE_NAME.into(),
                         public: true,
                         deprecation: NotDeprecated,
@@ -331,7 +331,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                     TypeConstructor {
                         origin: Default::default(),
                         parameters: vec![],
-                        typ: nil(),
+                        type_id: nil(),
                         module: PRELUDE_MODULE_NAME.into(),
                         public: true,
                         deprecation: NotDeprecated,
@@ -354,7 +354,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                     TypeConstructor {
                         origin: Default::default(),
                         parameters: vec![result_value.clone(), result_error.clone()],
-                        typ: result(result_value.clone(), result_error.clone()),
+                        type_id: result(result_value.clone(), result_error.clone()),
                         module: PRELUDE_MODULE_NAME.into(),
                         public: true,
                         deprecation: NotDeprecated,
@@ -423,7 +423,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                     TypeConstructor {
                         origin: Default::default(),
                         parameters: vec![],
-                        typ: string(),
+                        type_id: string(),
                         module: PRELUDE_MODULE_NAME.into(),
                         public: true,
                         deprecation: NotDeprecated,
@@ -437,7 +437,7 @@ pub fn build_prelude(ids: &UniqueIdGenerator) -> ModuleInterface {
                     TypeConstructor {
                         origin: Default::default(),
                         parameters: vec![],
-                        typ: utf_codepoint(),
+                        type_id: utf_codepoint(),
                         module: PRELUDE_MODULE_NAME.into(),
                         public: true,
                         deprecation: NotDeprecated,

@@ -376,7 +376,7 @@ impl<'ta, 'module> Generator<'ta, 'module> {
                 constant_expression(self.tracker, literal)
             }
             ValueConstructorVariant::Record { arity, .. } => {
-                Ok(self.record_constructor(constructor.type_.clone(), None, name, *arity))
+                Ok(self.record_constructor(constructor.type_id.clone(), None, name, *arity))
             }
             ValueConstructorVariant::ModuleFn { .. }
             | ValueConstructorVariant::ModuleConstant { .. }
@@ -729,7 +729,7 @@ impl<'ta, 'module> Generator<'ta, 'module> {
                 constructor:
                     ValueConstructor {
                         variant: ValueConstructorVariant::Record { .. },
-                        type_,
+                        type_id: type_,
                         ..
                     },
                 name,

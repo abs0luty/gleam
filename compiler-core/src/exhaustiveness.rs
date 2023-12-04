@@ -38,7 +38,7 @@ use crate::{
     ast::AssignName,
     type_::{
         collapse_links, error::UnknownTypeConstructorError, is_prelude_module, Environment, Type,
-        TypeId, TypeValueConstructor, TypeValueConstructorParameter, TypeVar,
+        TypeArena, TypeId, TypeValueConstructor, TypeValueConstructorParameter, TypeVar,
     },
 };
 use ecow::EcoString;
@@ -340,7 +340,7 @@ impl<'a> Compiler<'a> {
                     .enumerate()
                     .map(|(idx, constructor)| {
                         let variant = Constructor::Variant {
-                            type_: variable.type_.clone(),
+                            type_id: variable.type_.clone(),
                             index: idx as u16,
                         };
                         let new_variables = self.constructor_parameter_variables(
@@ -714,7 +714,14 @@ impl<'a> Compiler<'a> {
             .max_by_key(|var| counts.get(&var.id).copied().unwrap_or(0))
             .expect("The first row must have at least one column");
 
-        match collapse_links(variable.type_.clone(), self.environment.type_arena).as_ref() {
+        let type_with_collapsed_links =
+            collapse_links(variable.type_.clone(), self.environment.type_arena);
+
+        match self
+            .environment
+            .type_arena
+            .resolve(type_with_collapsed_links)
+        {
             Type::Fn { .. } | Type::Var { .. } => BranchMode::Infinite { variable },
 
             Type::Named { module, name, .. }
@@ -776,7 +783,7 @@ impl<'a> Compiler<'a> {
 
     fn constructor_parameter_variables(
         &mut self,
-        type_: &TypeId,
+        type_: TypeId,
         parameters: &[TypeValueConstructorParameter],
     ) -> Vec<Variable> {
         parameters
@@ -787,14 +794,13 @@ impl<'a> Compiler<'a> {
 
     fn constructor_parameter_variable(
         &mut self,
-        type_: &TypeId,
+        type_: TypeId,
         parameter: &TypeValueConstructorParameter,
     ) -> Variable {
         let type_ = match parameter.generic_type_parameter_index {
             None => parameter.type_.clone(),
-            Some(i) => {
-                generic_named_type_parameter(type_, i).expect("Generic type parameter index")
-            }
+            Some(i) => generic_named_type_parameter(type_, i, self.environment.type_arena)
+                .expect("Generic type parameter index"),
         };
         self.new_variable(type_)
     }
@@ -807,12 +813,16 @@ impl<'a> Compiler<'a> {
     }
 }
 
-fn generic_named_type_parameter(t: &Type, i: usize) -> Option<TypeId> {
-    match t {
+fn generic_named_type_parameter(
+    type_id: TypeId,
+    i: usize,
+    type_arena: &TypeArena,
+) -> Option<TypeId> {
+    match type_arena.resolve(type_id) {
         Type::Named { args, .. } => args.get(i).cloned(),
 
         Type::Var { type_, .. } => match &*type_.borrow() {
-            TypeVar::Link { type_ } => generic_named_type_parameter(type_, i),
+            TypeVar::Link { type_id } => generic_named_type_parameter(*type_id, i, type_arena),
             TypeVar::Unbound { .. } | TypeVar::Generic { .. } => None,
         },
 

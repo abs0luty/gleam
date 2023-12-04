@@ -410,15 +410,15 @@ fn did_you_mean(name: &str, options: &[EcoString]) -> Option<String> {
 }
 
 impl Error {
-    pub fn pretty_string(&self) -> String {
-        self.to_diagnostic().pretty_string()
+    pub fn pretty_string(&self, type_arena: &TypeArena) -> String {
+        self.to_diagnostic(type_arena).pretty_string()
     }
 
-    pub fn pretty(&self, buffer: &mut Buffer) {
-        self.to_diagnostic().write(buffer)
+    pub fn pretty(&self, buffer: &mut Buffer, type_arena: &TypeArena) {
+        self.to_diagnostic(type_arena).write(buffer)
     }
 
-    pub fn to_diagnostic(&self) -> Diagnostic {
+    pub fn to_diagnostic(&self, type_arena: &TypeArena) -> Diagnostic {
         use crate::type_::Error as TypeError;
         match self {
             Error::MetadataDecodeError { error } => {
@@ -1199,7 +1199,7 @@ But this argument has this type:
                         expected = printer.pretty_print(expected, 4),
                         given = printer.pretty_print(given, 4),
                     );
-                    if let Some(hint) = hint_alternative_operator(op, given) {
+                    if let Some(hint) = hint_alternative_operator(op, *given, type_arena) {
                         text.push('\n');
                         text.push_str("Hint: ");
                         text.push_str(&hint);
@@ -1229,12 +1229,14 @@ But this argument has this type:
                     rigid_type_names: annotated_names,
                 } => {
                     // Remap the pipe function type into just the type expected by the pipe.
-                    let expected = expected
+                    let expected = type_arena
+                        .resolve(*expected)
                         .fn_types()
                         .and_then(|(args, _)| args.get(0).cloned());
 
                     // Remap the argument as well, if it's a function.
-                    let given = given
+                    let given = type_arena
+                        .resolve(*given)
                         .fn_types()
                         .and_then(|(args, _)| args.get(0).cloned())
                         .unwrap_or_else(|| given.clone());
@@ -2706,6 +2708,8 @@ fn write_cycle(buffer: &mut String, cycle: &[EcoString]) {
 }
 
 fn hint_alternative_operator(op: &BinOp, given: TypeId, type_arena: &TypeArena) -> Option<String> {
+    let given = type_arena.resolve(given);
+
     match op {
         BinOp::AddInt if given.is_float(type_arena) => Some(hint_numeric_message("+.", "Float")),
         BinOp::DivInt if given.is_float(type_arena) => Some(hint_numeric_message("/.", "Float")),
