@@ -15,6 +15,7 @@ env:
 
 jobs:
   check-release-win:
+    needs: [ build-release-win ]
     name: check-release-win
     runs-on: windows-latest
     steps:
