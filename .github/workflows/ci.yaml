@@ -14,33 +14,6 @@ env:
   CROSS_CONTAINER_UID: 0
 
 jobs:
-  check-release-win:
-    name: check-release-win
-    runs-on: windows-latest
-    steps:
-      - uses: actions/download-artifact@v3
-        with:
-          name: gleam
-      - run: |
-          .\gleam.exe --version
-  build-release-win:
-    name: build-release-win
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          target: x86_64-pc-windows-msvc
-      - uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release
-      - uses: actions/upload-artifact@v3
-        with:
-          name: gleam
-          path: target/release/gleam.exe
-
   test:
     name: test
     runs-on: ${{ matrix.os }}
