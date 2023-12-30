@@ -9,5 +9,6 @@
 
     // Images
     "images/**": true,
-  }
+  },
+  "C_Cpp.dimInactiveRegions": false
 }
